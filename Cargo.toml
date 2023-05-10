@@ -1,0 +1,17 @@
+[package]
+name = "yaytapi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+actix-web = "4.3.1"
+chrono = "0.4.24"
+regex = "1.8.1"
+reqwest = "0.11.17"
+serde = { version = "1.0.147", features = ["derive"] }
+serde_json = { version = "1.0.87", features = ["preserve_order"] }
+tokio = "1.28.0"
+unqlite = "1.5.0"
+yayti = { git = "https://github.com/MarmadileManteater/yayti", branch = "0.2.0", version = "0.2.0", features = ["decipher_streams", "parse_languages_to_published" ] }
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
