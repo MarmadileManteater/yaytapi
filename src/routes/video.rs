@@ -11,16 +11,17 @@ use crate::helpers::JsonDb;
 use crate::settings::AppSettings;
 
 async fn fetch_next_with_cache(id: &str, lang: &str, app_settings: &AppSettings) -> Result<Value, reqwest::Error> {
-  let db = UnQLite::create(&app_settings.db_name);
+  // create a connection to the db
+  let db = app_settings.get_json_db().await;
   let previous_data = if app_settings.cache_requests {
-    match db.seek_for_json::<Value>(&format!("{}-{}", id, lang)) {
+    match db.seek_for_json(&format!("{}-{}", id, lang)).await {
       Some(json) => {
         match json["timestamp"].as_i64() {
           Some(timestamp) => {
             let current_timestamp = Utc::now().timestamp();
             let offset = current_timestamp - timestamp;
             if offset as i32 > app_settings.cache_timeout {
-              db.delete(&format!("{}-{}", id, lang));
+              db.delete(&format!("{}-{}", id, lang)).await;
               None
             } else {
               Some(json)
@@ -44,7 +45,7 @@ async fn fetch_next_with_cache(id: &str, lang: &str, app_settings: &AppSettings)
           let Ok(mut json) = from_str::<Value>(&next) else { todo!() };
           json["timestamp"] = Utc::now().timestamp().into();
           if app_settings.cache_requests {
-            db.insert_json(&format!("{}-{}", id, lang), &json);
+            db.insert_json(&format!("{}-{}", id, lang), &json).await;
           }
           Ok(json)
         },
@@ -55,7 +56,7 @@ async fn fetch_next_with_cache(id: &str, lang: &str, app_settings: &AppSettings)
 }
 
 #[derive(Deserialize)]
-struct VideoEndpointQueryParams {
+pub struct VideoEndpointQueryParams {
   hl: Option<String>,
   fields: Option<String>
 }
