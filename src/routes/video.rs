@@ -5,9 +5,12 @@ use chrono::prelude::Utc;
 use actix_web::web::{Path, Data, Query};
 use actix_web::{HttpResponse, Responder, get};
 use yayti::extractors::{ciphers::get_player_js_id, ciphers::get_player_response, innertube::{fetch_next,fetch_player_with_sig_timestamp}};
-use yayti::parsers::{ClientContext, ciphers::{extract_sig_timestamp, decipher_streams}, web::video::{fmt_inv_with_existing_map, fmt_inv}};
+use yayti::parsers::{ClientContext, ciphers::{extract_sig_timestamp, decipher_streams}, web::video::{fmt_inv_with_existing_map, fmt_inv, get_legacy_formats, get_adaptive_formats}};
 use yayti::helpers::generate_yt_video_thumbnail_url;
 use reqwest::Client;
+use std::str::FromStr;
+use actix_web::http::StatusCode;
+use actix_web::HttpRequest;
 use crate::settings::AppSettings;
 use crate::helpers::DbWrapper;
 
@@ -187,5 +190,60 @@ pub async fn video_thumbnail_proxy(params: Path<(String, String)>) -> impl Respo
       HttpResponse::Ok().content_type("image/jpeg").streaming(thumbnail_response.bytes_stream())
     },
     Err(_err) => HttpResponse::Ok().body("error")
+  }
+}
+
+#[derive(Deserialize)]
+pub struct LatestVersionQueryParams {
+  id: String,
+  itag: String,
+  local: Option<bool>,
+  hl: Option<String>
+}
+
+struct Format {
+  itag: i32,
+  url: Option<String>,
+  signature_cipher: Option<String>
+}
+
+#[get("/latest_version")]
+pub async fn latest_version(params: Query<LatestVersionQueryParams>, req: HttpRequest, app_settings: Data<AppSettings>) -> impl Responder {
+  let video_id = &params.id;
+  let itag = i32::from_str(&params.itag).unwrap_or(0); 
+  let lang = params.hl.clone().unwrap_or(String::from("en"));
+  let local = &params.local.unwrap_or(false);
+  let Ok(player_res) = fetch_player_with_cache(&video_id, &lang, &app_settings).await else { todo!() };
+  let Some(mut legacy_formats) = get_legacy_formats(&player_res) else { todo!() };
+  let mut format = None;
+  for i in 0..legacy_formats.len() {
+    if legacy_formats[i].itag == itag {
+      format = Some(Format {
+        url: legacy_formats[i].url.clone(),
+        signature_cipher: legacy_formats[i].signature_cipher.clone(),
+        itag: legacy_formats[i].itag.clone()
+      });
+      break;
+    }
+  }
+  let mut adaptive_formats = get_adaptive_formats(&player_res).unwrap();
+  for i in 0..adaptive_formats.len() {
+    if adaptive_formats[i].itag == itag {
+      format = Some(Format {
+        url: adaptive_formats[i].url.clone(),
+        signature_cipher: adaptive_formats[i].signature_cipher.clone(),
+        itag: adaptive_formats[i].itag.clone()
+      });
+      break;
+    }
+  }
+  match format {
+    Some(format_match) => {
+      let Some(url) = format_match.url else { todo!() };
+      HttpResponse::build(StatusCode::from_u16(301).unwrap()).set_header("Location", url).body("")
+    },
+    None => {
+      HttpResponse::build(StatusCode::from_u16(500).unwrap()).body("{ message: \"error\" }")
+    }
   }
 }
