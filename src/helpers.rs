@@ -1,7 +1,7 @@
 use unqlite::{UnQLite, KV, Cursor, Direction::Exact};
 use serde_json::{json, from_str,to_string, Value};
 use serde::{Serialize, Deserialize};
-use mongodb::{Collection};
+use mongodb::{Database};
 use mongodb::bson::{doc};
 use crate::settings::DbType;
 
@@ -30,7 +30,10 @@ impl JsonDb for UnQLite {
   }
   fn insert_json(&self, key: &str, value: &Value) {
     let Ok(string_value) = to_string(value) else { todo!() };
-    self.kv_store(key, string_value);
+    match self.kv_store(key, string_value) {
+      Ok(_) => {},
+      Err(error) => println!("❌ insert_json failed: {}", error)
+    }
   }
   fn delete(&self, key: &str) {
     match self.seek(key, Exact) {
@@ -51,7 +54,7 @@ pub struct JsonKVPair {
 }
 
 pub struct DbWrapper {
-  pub mongodb: Option<Collection<Value>>,
+  pub mongodb: Option<Database>,
   pub unqlite: Option<UnQLite>,
   pub preference: DbType
 }
@@ -64,24 +67,25 @@ impl DbWrapper {
       preference: DbType::UnQLite
     }
   }
-  pub fn mongodb(mongodb: Collection::<Value>) -> DbWrapper {
+  pub fn mongodb(mongodb: Database) -> DbWrapper {
     DbWrapper {
       mongodb: Some(mongodb),
       unqlite: None,
       preference: DbType::MongoDb
     }
   }
-  pub async fn seek_for_json(&self, key: &str) -> Option<Value> {
+  pub async fn seek_for_json(&self, collection_name: &str, key: &str) -> Option<Value> {
     match self.preference {
       DbType::UnQLite => {
         let Some(db) = &self.unqlite else { todo!() };
-        db.seek_for_json(key)
+        db.seek_for_json(&format!("{}-{}", collection_name, key))
       },
       DbType::MongoDb => {
         let Some(db) = &self.mongodb else { todo!() };
-        match db.find_one(doc! { "key": key }, None).await {
+        let collection = db.collection::<Value>(&format!("yayti.{}", collection_name));
+        match collection.find_one(doc! { "key": key }, None).await {
           Ok(found) => match found {
-            Some(found) => Some(json!(found["value"].as_object())),
+            Some(found) => Some(json!(found["value"])),
             None => None
           },
           Err(_) => None
@@ -89,27 +93,35 @@ impl DbWrapper {
       }
     }
   }
-  pub async fn insert_json(&self, key: &str, value: &Value) {
+  pub async fn insert_json(&self, collection_name: &str, key: &str, value: &Value) {
     match self.preference {
       DbType::UnQLite => {
         let Some(db) = &self.unqlite else { todo!() };
-        db.insert_json(key, value);
+        db.insert_json(&format!("{}-{}", collection_name, key), value);
       },
       DbType::MongoDb => {
         let Some(db) = &self.mongodb else { todo!() };
-        db.insert_one(json!(JsonKVPair { key: String::from(key), value: value.clone() }), None).await;
+        let collection = db.collection::<Value>(&format!("yayti.{}", collection_name));
+        match collection.insert_one(json!(JsonKVPair { key: String::from(key), value: value.clone() }), None).await {
+          Ok(_) => {},
+          Err(error) => println!("❌ insert_json failed: {}", error)
+        }
       }
     }
   }
-  pub async fn delete(&self, key: &str) {
+  pub async fn delete(&self, collection_name: &str, key: &str) {
     match self.preference {
       DbType::UnQLite => {
         let Some(db) = &self.unqlite else { todo!() };
-        db.delete(key)
+        db.delete(&format!("{}-{}", collection_name, key))
       },
       DbType::MongoDb => {
         let Some(db) = &self.mongodb else { todo!() };
-        db.delete_one(doc!{ "key": key }, None).await;
+        let collection = db.collection::<Value>(&format!("yayti.{}", collection_name));
+        match collection.delete_one(doc!{ "key": key }, None).await {
+          Ok(_) => {},
+          Err(error) => println!("❌ delete failed: {}", error)
+        }
       }
     }
   }

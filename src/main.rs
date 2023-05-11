@@ -7,8 +7,6 @@ use settings::AppSettings;
 use actix_web::{HttpServer, App, web::Data};
 use std::io::Result;
 
-use unqlite::{UnQLite};
-
 #[tokio::main]
 async fn main() -> Result<()> {
   let args: Vec<String> = std::env::args().collect();

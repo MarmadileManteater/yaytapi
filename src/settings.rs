@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use regex::Regex;
 use unqlite::UnQLite;
 use mongodb::{Client, options::ClientOptions};
@@ -78,7 +77,7 @@ impl AppSettings {
         // Get a handle to the deployment.
         let client = Client::with_options(client_options).unwrap();
         let db = client.database(&self.db_name);
-        DbWrapper::mongodb(db.collection::<Value>("yaytapi"))
+        DbWrapper::mongodb(db)
       }
     }
   }
