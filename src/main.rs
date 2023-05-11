@@ -21,6 +21,7 @@ async fn main() -> Result<()> {
       .app_data(Data::new(app_settings))
       .service(routes::video::video_endpoint)// -> /api/v1/videos/{video_id}
       .service(routes::video::video_thumbnail_proxy)// -> /vi/{video_id}/{file_name}.jpg
+      .service(routes::channels::author_thumbnail_proxy)// -> /ggpht/{author_thumbnail_url:.*}
   }).bind(format!("{}:{}", ip_address, port))?
     .run()
     .await
