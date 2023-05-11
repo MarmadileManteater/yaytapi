@@ -1,11 +1,11 @@
 
-use serde_json::{json, Value, to_string_pretty, from_str};
+use serde_json::{Map, json, Value, to_string_pretty, from_str};
 use serde::{Serialize, Deserialize};
 use chrono::prelude::Utc;
 use actix_web::web::{Path, Data, Query};
 use actix_web::{HttpResponse, Responder, get};
 use yayti::extractors::{ciphers::get_player_js_id, ciphers::get_player_response, innertube::{fetch_next,fetch_player_with_sig_timestamp}};
-use yayti::parsers::{ClientContext, ciphers::{extract_sig_timestamp, decipher_streams}, web::video::{get_legacy_formats}};
+use yayti::parsers::{ClientContext, ciphers::{extract_sig_timestamp, decipher_streams}, web::video::{fmt_inv_with_existing_map, fmt_inv}};
 use crate::settings::AppSettings;
 use crate::helpers::DbWrapper;
 
@@ -163,12 +163,14 @@ pub async fn video_endpoint(path: Path<String>, query: Query<VideoEndpointQueryP
     None => Vec::<String>::new()
   };
   
-  let Ok(next_res) = fetch_next_with_cache(&video_id, &lang, &app_settings).await else { todo!() };
   let Ok(player_res) = fetch_player_with_cache(&video_id, &lang, &app_settings).await else { todo!() };
-  let data = InnerTubeResponse {
+  let mut json = fmt_inv(&player_res, &lang);
+  let Ok(next_res) = fetch_next_with_cache(&video_id, &lang, &app_settings).await else { todo!() };
+  let json = fmt_inv_with_existing_map(&next_res, &lang, json);
+  /*let data = InnerTubeResponse {
     next: next_res,
     player: player_res
-  };
-  let Ok(json_response) = to_string_pretty(&data) else { todo!() };
+  };*/
+  let Ok(json_response) = to_string_pretty(&json) else { todo!() };
   HttpResponse::Ok().content_type("application/json").body(json_response)
 }
