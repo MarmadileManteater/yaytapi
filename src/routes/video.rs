@@ -6,6 +6,8 @@ use actix_web::web::{Path, Data, Query};
 use actix_web::{HttpResponse, Responder, get};
 use yayti::extractors::{ciphers::get_player_js_id, ciphers::get_player_response, innertube::{fetch_next,fetch_player_with_sig_timestamp}};
 use yayti::parsers::{ClientContext, ciphers::{extract_sig_timestamp, decipher_streams}, web::video::{fmt_inv_with_existing_map, fmt_inv}};
+use yayti::helpers::generate_yt_video_thumbnail_url;
+use reqwest::Client;
 use crate::settings::AppSettings;
 use crate::helpers::DbWrapper;
 
@@ -173,4 +175,17 @@ pub async fn video_endpoint(path: Path<String>, query: Query<VideoEndpointQueryP
   };*/
   let Ok(json_response) = to_string_pretty(&json) else { todo!() };
   HttpResponse::Ok().content_type("application/json").body(json_response)
+}
+
+#[get("/vi/{video_id}/{file_name}.jpg")]
+pub async fn video_thumbnail_proxy(params: Path<(String, String)>) -> impl Responder {
+  let video_id = String::from(&params.0);
+  let file_name = String::from(&params.1);
+  let client = Client::new();
+  match client.get(generate_yt_video_thumbnail_url(&video_id, &file_name)).send().await {
+    Ok(thumbnail_response) => {
+      HttpResponse::Ok().content_type("image/jpeg").streaming(thumbnail_response.bytes_stream())
+    },
+    Err(_err) => HttpResponse::Ok().body("error")
+  }
 }
