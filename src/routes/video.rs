@@ -221,8 +221,16 @@ pub async fn latest_version(params: Query<LatestVersionQueryParams>, app_setting
   let itag = i32::from_str(&params.itag).unwrap_or(0); 
   let lang = params.hl.clone().unwrap_or(String::from("en"));
   let local = &params.local.unwrap_or(false);
-  let Ok(player_res) = fetch_player_with_cache(&video_id, &lang, &app_settings).await else { todo!() };
-  let Some(legacy_formats) = get_legacy_formats(&player_res) else { todo!() };
+  let player_res = match fetch_player_with_cache(&video_id, &lang, &app_settings).await {
+    Ok(player_res) => player_res,
+    Err(error) => {
+      return HttpResponse::build(StatusCode::from_u16(500).unwrap()).body("{ \"type\": \"error\", \"message\": \"Failed to fetch `/player` endpoint\" }")
+    }
+  };
+  let legacy_formats = match get_legacy_formats(&player_res) {
+    Some(legacy_formats) => legacy_formats,
+    None => Vec::new()
+  };
   let mut format = None;
   let mut available_itags = Vec::<i32>::new();
   for i in 0..legacy_formats.len() {
@@ -234,7 +242,10 @@ pub async fn latest_version(params: Query<LatestVersionQueryParams>, app_setting
       break;
     }
   }
-  let adaptive_formats = get_adaptive_formats(&player_res).unwrap();
+  let adaptive_formats = match get_adaptive_formats(&player_res) {
+    Some(adaptive_formats) => adaptive_formats,
+    None => Vec::new()
+  };
   for i in 0..adaptive_formats.len() {
     available_itags.push(adaptive_formats[i].itag);
     if adaptive_formats[i].itag == itag {
@@ -247,7 +258,7 @@ pub async fn latest_version(params: Query<LatestVersionQueryParams>, app_setting
   match format {
     Some(format_match) => {
       let Some(url) = format_match.url else { todo!() };
-      HttpResponse::build(StatusCode::from_u16(301).unwrap()).insert_header(("Location", url)).body("")
+      HttpResponse::build(StatusCode::from_u16(302).unwrap()).insert_header(("Location", url)).body("")
     },
     None => {
       HttpResponse::build(StatusCode::from_u16(404).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"No streams found matching the given itag: {}\", \"available_streams\": [{}] }}", itag, available_itags.into_iter().map(|e| format!("{}", e)).collect::<Vec<String>>().join(",")))
