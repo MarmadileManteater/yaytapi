@@ -47,7 +47,7 @@ pub async fn server_stats(params: Query<StatsQueryParams>) -> impl Responder {
     to_string(&stats)
   } {
     Ok(json_response) => json_response,
-    Err(error) => {
+    Err(_) => {
       return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body("{ \"type\": \"error\", \"message\": \"failed to serialize response\" }");
     }
   };
