@@ -12,6 +12,8 @@ pub enum DbType {
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct AppSettings {
+  pub print_config: bool,
+  pub enable_actix_web_logger: bool,
   pub decipher_streams: bool,
   pub enable_local_streaming: bool,
   pub enable_cors: bool,
@@ -54,6 +56,8 @@ impl AppSettings {
       }
     };
     AppSettings {
+      print_config: args.contains(&String::from("--print-config")),
+      enable_actix_web_logger: !args.contains(&String::from("--no-logs")),
       decipher_streams: args.contains(&String::from("--decipher-streams")) || enabled_all_features,
       enable_local_streaming: args.contains(&String::from("--enable-local-streaming")) || enabled_all_features,
       enable_cors: args.contains(&String::from("--enable-cors")) || enabled_all_features,

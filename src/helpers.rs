@@ -3,6 +3,7 @@ use serde_json::{json, from_str,to_string, Value};
 use serde::{Serialize, Deserialize};
 use mongodb::{Database};
 use mongodb::bson::{doc};
+use log::{warn,error};
 use crate::settings::DbType;
 
 pub trait JsonDb {
@@ -20,7 +21,7 @@ impl JsonDb for UnQLite {
         match from_str::<Value>(&json_string) {
           Ok(obj) => Some(obj),
           Err(err) => {
-            println!("⚠ warning: {}", err);
+            warn!("seek for json failed: {}", err);
             None
           }
         }
@@ -32,7 +33,7 @@ impl JsonDb for UnQLite {
     let Ok(string_value) = to_string(value) else { todo!() };
     match self.kv_store(key, string_value) {
       Ok(_) => {},
-      Err(error) => println!("❌ insert_json failed: {}", error)
+      Err(error) => error!("insert_json failed: {}", error)
     }
   }
   fn delete(&self, key: &str) {
@@ -41,7 +42,7 @@ impl JsonDb for UnQLite {
         cursor.delete();
       },
       None => {
-        println!("⚠ warning: attempted to delete non-existent key");
+        warn!("attempted to delete non-existent key");
       }
     };
   }
@@ -104,7 +105,7 @@ impl DbWrapper {
         let collection = db.collection::<Value>(&format!("yayti.{}", collection_name));
         match collection.insert_one(json!(JsonKVPair { key: String::from(key), value: value.clone() }), None).await {
           Ok(_) => {},
-          Err(error) => println!("❌ insert_json failed: {}", error)
+          Err(error) => error!("❌ insert_json failed: {}", error)
         }
       }
     }
@@ -120,7 +121,7 @@ impl DbWrapper {
         let collection = db.collection::<Value>(&format!("yayti.{}", collection_name));
         match collection.delete_one(doc!{ "key": key }, None).await {
           Ok(_) => {},
-          Err(error) => println!("❌ delete failed: {}", error)
+          Err(error) => error!("❌ delete failed: {}", error)
         }
       }
     }
