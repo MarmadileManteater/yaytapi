@@ -9,7 +9,9 @@ use yayti::parsers::{ClientContext, ciphers::{extract_sig_timestamp, decipher_st
 use yayti::helpers::generate_yt_video_thumbnail_url;
 use reqwest::Client;
 use std::str::FromStr;
+use std::num::ParseIntError;
 use actix_web::http::StatusCode;
+use std::fmt::{Formatter, Display};
 use crate::settings::AppSettings;
 use crate::helpers::DbWrapper;
 
@@ -62,16 +64,45 @@ async fn fetch_next_with_cache(id: &str, lang: &str, app_settings: &AppSettings)
   }
 }
 
-async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSettings) -> Result<Value, reqwest::Error> {
-  let db = app_settings.get_json_db().await;
+pub enum FetchPlayerError {
+  Reqwest(reqwest::Error),
+  PlayerJsIdNotFound,
+  SignatureTimestampNotFound(ParseIntError),
+  FailedToSerializePlayer,
+  ResponseUnplayable,
+  LoginRequired
+}
 
+impl Display for FetchPlayerError {
+  fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+    write!(f, "{}", match self {
+      FetchPlayerError::Reqwest(error) => format!("Error making request to innertube {}", error),
+      FetchPlayerError::PlayerJsIdNotFound => format!("No player.js id found in `/iframe_api` response"),
+      FetchPlayerError::SignatureTimestampNotFound(error) => format!("Unable to parse sig timestamp from player.js response"),
+      FetchPlayerError::FailedToSerializePlayer => format!("Failed to serialize the JSON response from innertube (this probably means the response was the wrong mime type)"),
+      FetchPlayerError::ResponseUnplayable => format!("Response is unplayable"),
+      FetchPlayerError::LoginRequired => format!("Login required")
+    })
+  }
+}
+
+async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSettings) -> Result<Value,FetchPlayerError> {
+  let db = app_settings.get_json_db().await;
   let previous_data = get_previous_data("player", &format!("{}-{}", id, lang), &db, app_settings).await;
   match previous_data {
     Some(json) => {
       Ok(json)
     },
     None => {
-      let Ok(player_js_id) = get_player_js_id().await else { todo!() };
+      let player_js_id = match get_player_js_id().await {
+        Ok(player_js_id) => player_js_id,
+        Err(error) => {
+          match error {
+            Some(error) => return Err(FetchPlayerError::Reqwest(error)),
+            None => return Err(FetchPlayerError::PlayerJsIdNotFound)
+          }
+        }
+      };
 
       let previous_js_id = get_previous_data("player", "player.js-id", &db, app_settings).await;
       let need_new_player_js = match previous_js_id {
@@ -84,8 +115,18 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
       };
       
       let (player_js_response, signature_timestamp) = if need_new_player_js {
-        let Ok(player_js_response) = get_player_response(&player_js_id).await else { todo!() };
-        let Ok(signature_timestamp) = extract_sig_timestamp(&player_js_response) else { todo!() };
+        let player_js_response = match get_player_response(&player_js_id).await {
+          Ok(player_js_response) => player_js_response,
+          Err(error) => {
+            return Err(FetchPlayerError::Reqwest(error));
+          }
+        };
+        let signature_timestamp = match extract_sig_timestamp(&player_js_response) {
+          Ok(signature_timestamp) => signature_timestamp,
+          Err(error) => {
+            return Err(FetchPlayerError::SignatureTimestampNotFound(error));
+          }
+        };
         db.delete("player", "player.js-id").await;
         db.delete("player", "player.js").await;
         db.delete("player", "signature_timestamp").await;
@@ -101,8 +142,24 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
     
       match fetch_player_with_sig_timestamp(id, signature_timestamp, &ClientContext::default_web(), Some(lang)).await {
         Ok(player) => {
-          let Ok(mut json) = from_str::<Value>(&player) else { todo!() };
+          let mut json = match from_str::<Value>(&player) {
+            Ok(json) => json,
+            Err(_) => {
+              return Err(FetchPlayerError::FailedToSerializePlayer);
+            }
+          };
           let mut streams = Vec::<String>::new();
+          match json["playabilityStatus"]["status"].as_str() {
+            Some(status) => {
+              if status == "LOGIN_REQUIRED" {
+                return Err(FetchPlayerError::LoginRequired);
+              }
+              if status == "ERROR" {
+                return Err(FetchPlayerError::ResponseUnplayable);
+              }
+            },
+            None => {}
+          };
           let Some(formats) = json["streamingData"]["formats"].as_array() else { todo!() };
           let Some(adaptive_formats) = json["streamingData"]["adaptiveFormats"].as_array() else { todo!() };
           match formats[0]["url"].as_str() {
@@ -134,7 +191,7 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
           }
           Ok(json.clone())
         },
-        Err(error) => Err(error)
+        Err(error) => Err(FetchPlayerError::Reqwest(error))
       }
     }
   }
@@ -224,7 +281,7 @@ pub async fn latest_version(params: Query<LatestVersionQueryParams>, app_setting
   let player_res = match fetch_player_with_cache(&video_id, &lang, &app_settings).await {
     Ok(player_res) => player_res,
     Err(error) => {
-      return HttpResponse::build(StatusCode::from_u16(500).unwrap()).body("{ \"type\": \"error\", \"message\": \"Failed to fetch `/player` endpoint\" }")
+      return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Failed to fetch `/player` endpoint\", \"inner_message\": \"{}\" }}", error))
     }
   };
   let legacy_formats = match get_legacy_formats(&player_res) {
