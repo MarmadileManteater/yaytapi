@@ -1,5 +1,5 @@
 
-use serde_json::{json, Value, to_string_pretty, from_str};
+use serde_json::{json, Value, to_string_pretty, to_string, from_str};
 use serde::{Serialize, Deserialize};
 use chrono::prelude::Utc;
 use actix_web::web::{Path, Data, Query};
@@ -143,7 +143,8 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
 #[derive(Deserialize)]
 pub struct VideoEndpointQueryParams {
   hl: Option<String>,
-  fields: Option<String>
+  fields: Option<String>,
+  pretty: Option<i32>
 }
 
 #[derive(Serialize, Deserialize)]
@@ -156,6 +157,10 @@ pub struct InnerTubeResponse {
 pub async fn video_endpoint(path: Path<String>, query: Query<VideoEndpointQueryParams>, app_settings: Data<AppSettings>) -> impl Responder {
   let video_id = path.into_inner();
   let lang = query.hl.clone().unwrap_or(String::from("en"));
+  let is_pretty = match query.pretty {
+    Some(pretty) => pretty == 1,
+    None => false
+  };
   let fields = match &query.fields {
     Some(fields) => {
       if fields.contains(",") {
@@ -171,11 +176,17 @@ pub async fn video_endpoint(path: Path<String>, query: Query<VideoEndpointQueryP
   let json = fmt_inv(&player_res, &lang);
   let Ok(next_res) = fetch_next_with_cache(&video_id, &lang, &app_settings).await else { todo!() };
   let json = fmt_inv_with_existing_map(&next_res, &lang, json);
-  /*let data = InnerTubeResponse {
-    next: next_res,
-    player: player_res
-  };*/
-  let Ok(json_response) = to_string_pretty(&json) else { todo!() };
+
+  let json_response = match if is_pretty {
+    to_string_pretty(&json)
+  } else {
+    to_string(&json)
+  } {
+    Ok(json_response) => json_response,
+    Err(error) => {
+      return HttpResponse::build(StatusCode::from_u16(500).unwrap()).body("{ \"type\": \"error\", \"message\": \"failed to serialize response\" }");
+    }
+  };
   HttpResponse::Ok().content_type("application/json").body(json_response)
 }
 
