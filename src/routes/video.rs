@@ -1,5 +1,5 @@
 
-use serde_json::{Map, json, Value, to_string_pretty, from_str};
+use serde_json::{json, Value, to_string_pretty, from_str};
 use serde::{Serialize, Deserialize};
 use chrono::prelude::Utc;
 use actix_web::web::{Path, Data, Query};
@@ -10,7 +10,6 @@ use yayti::helpers::generate_yt_video_thumbnail_url;
 use reqwest::Client;
 use std::str::FromStr;
 use actix_web::http::StatusCode;
-use actix_web::HttpRequest;
 use crate::settings::AppSettings;
 use crate::helpers::DbWrapper;
 
@@ -86,7 +85,7 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
       
       let (player_js_response, signature_timestamp) = if need_new_player_js {
         let Ok(player_js_response) = get_player_response(&player_js_id).await else { todo!() };
-        let signature_timestamp = extract_sig_timestamp(&player_js_response);
+        let Ok(signature_timestamp) = extract_sig_timestamp(&player_js_response) else { todo!() };
         db.delete("player", "player.js-id").await;
         db.delete("player", "player.js").await;
         db.delete("player", "signature_timestamp").await;
@@ -169,7 +168,7 @@ pub async fn video_endpoint(path: Path<String>, query: Query<VideoEndpointQueryP
   };
   
   let Ok(player_res) = fetch_player_with_cache(&video_id, &lang, &app_settings).await else { todo!() };
-  let mut json = fmt_inv(&player_res, &lang);
+  let json = fmt_inv(&player_res, &lang);
   let Ok(next_res) = fetch_next_with_cache(&video_id, &lang, &app_settings).await else { todo!() };
   let json = fmt_inv_with_existing_map(&next_res, &lang, json);
   /*let data = InnerTubeResponse {
@@ -202,37 +201,31 @@ pub struct LatestVersionQueryParams {
 }
 
 struct Format {
-  itag: i32,
-  url: Option<String>,
-  signature_cipher: Option<String>
+  url: Option<String>
 }
 
 #[get("/latest_version")]
-pub async fn latest_version(params: Query<LatestVersionQueryParams>, req: HttpRequest, app_settings: Data<AppSettings>) -> impl Responder {
+pub async fn latest_version(params: Query<LatestVersionQueryParams>, app_settings: Data<AppSettings>) -> impl Responder {
   let video_id = &params.id;
   let itag = i32::from_str(&params.itag).unwrap_or(0); 
   let lang = params.hl.clone().unwrap_or(String::from("en"));
   let local = &params.local.unwrap_or(false);
   let Ok(player_res) = fetch_player_with_cache(&video_id, &lang, &app_settings).await else { todo!() };
-  let Some(mut legacy_formats) = get_legacy_formats(&player_res) else { todo!() };
+  let Some(legacy_formats) = get_legacy_formats(&player_res) else { todo!() };
   let mut format = None;
   for i in 0..legacy_formats.len() {
     if legacy_formats[i].itag == itag {
       format = Some(Format {
-        url: legacy_formats[i].url.clone(),
-        signature_cipher: legacy_formats[i].signature_cipher.clone(),
-        itag: legacy_formats[i].itag.clone()
+        url: legacy_formats[i].url.clone()
       });
       break;
     }
   }
-  let mut adaptive_formats = get_adaptive_formats(&player_res).unwrap();
+  let adaptive_formats = get_adaptive_formats(&player_res).unwrap();
   for i in 0..adaptive_formats.len() {
     if adaptive_formats[i].itag == itag {
       format = Some(Format {
-        url: adaptive_formats[i].url.clone(),
-        signature_cipher: adaptive_formats[i].signature_cipher.clone(),
-        itag: adaptive_formats[i].itag.clone()
+        url: adaptive_formats[i].url.clone()
       });
       break;
     }
@@ -240,7 +233,7 @@ pub async fn latest_version(params: Query<LatestVersionQueryParams>, req: HttpRe
   match format {
     Some(format_match) => {
       let Some(url) = format_match.url else { todo!() };
-      HttpResponse::build(StatusCode::from_u16(301).unwrap()).set_header("Location", url).body("")
+      HttpResponse::build(StatusCode::from_u16(301).unwrap()).insert_header(("Location", url)).body("")
     },
     None => {
       HttpResponse::build(StatusCode::from_u16(500).unwrap()).body("{ message: \"error\" }")

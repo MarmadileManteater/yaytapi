@@ -3086,6 +3086,7 @@ dependencies = [
  "reqwest-streams",
  "serde",
  "serde_json",
+ "substring",
  "tokio",
  "unqlite",
  "yayti",

@@ -1,6 +1,6 @@
 
 pub mod video;
-pub mod channels;
+pub mod channel;
 use serde::{Serialize, Deserialize};
 use serde_json::{to_string_pretty, to_string};
 use actix_web::web::{Query};

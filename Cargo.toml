@@ -12,6 +12,7 @@ reqwest = "0.11.17"
 reqwest-streams = "0.2.5"
 serde = { version = "1.0.147", features = ["derive"] }
 serde_json = { version = "1.0.87", features = ["preserve_order"] }
+substring = "1.4.5"
 tokio = "1.28.0"
 unqlite = "1.5.0"
 yayti = { git = "https://github.com/MarmadileManteater/yayti", branch = "0.2.0", version = "0.2.0", features = ["decipher_streams", "parse_languages_to_published" ] }
