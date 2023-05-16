@@ -184,7 +184,7 @@ pub async fn video_endpoint(path: Path<String>, query: Query<VideoEndpointQueryP
   } {
     Ok(json_response) => json_response,
     Err(error) => {
-      return HttpResponse::build(StatusCode::from_u16(500).unwrap()).body("{ \"type\": \"error\", \"message\": \"failed to serialize response\" }");
+      return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body("{ \"type\": \"error\", \"message\": \"failed to serialize response\" }");
     }
   };
   HttpResponse::Ok().content_type("application/json").body(json_response)
@@ -224,7 +224,9 @@ pub async fn latest_version(params: Query<LatestVersionQueryParams>, app_setting
   let Ok(player_res) = fetch_player_with_cache(&video_id, &lang, &app_settings).await else { todo!() };
   let Some(legacy_formats) = get_legacy_formats(&player_res) else { todo!() };
   let mut format = None;
+  let mut available_itags = Vec::<i32>::new();
   for i in 0..legacy_formats.len() {
+    available_itags.push(legacy_formats[i].itag);
     if legacy_formats[i].itag == itag {
       format = Some(Format {
         url: legacy_formats[i].url.clone()
@@ -234,6 +236,7 @@ pub async fn latest_version(params: Query<LatestVersionQueryParams>, app_setting
   }
   let adaptive_formats = get_adaptive_formats(&player_res).unwrap();
   for i in 0..adaptive_formats.len() {
+    available_itags.push(adaptive_formats[i].itag);
     if adaptive_formats[i].itag == itag {
       format = Some(Format {
         url: adaptive_formats[i].url.clone()
@@ -247,7 +250,7 @@ pub async fn latest_version(params: Query<LatestVersionQueryParams>, app_setting
       HttpResponse::build(StatusCode::from_u16(301).unwrap()).insert_header(("Location", url)).body("")
     },
     None => {
-      HttpResponse::build(StatusCode::from_u16(500).unwrap()).body("{ message: \"error\" }")
+      HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"No streams found matching the given itag: {}\", \"available_streams\": [{}] }}", itag, available_itags.into_iter().map(|e| format!("{}", e)).collect::<Vec<String>>().join(",")))
     }
   }
 }
