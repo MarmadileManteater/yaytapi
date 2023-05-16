@@ -8,7 +8,6 @@ use actix_web::{HttpServer, App, web::Data};
 use std::io::Result;
 use actix_web::middleware::Logger;
 use env_logger::{Env, init_from_env};
-use log::{debug, error, log_enabled, info, Level};
 
 #[tokio::main]
 async fn main() -> Result<()> {
