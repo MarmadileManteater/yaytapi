@@ -19,6 +19,7 @@ async fn main() -> Result<()> {
     let app_settings = (&app_settings).clone();
     App::new()
       .app_data(Data::new(app_settings))
+      .service(routes::server_stats)// -> /api/v1/stats
       .service(routes::video::latest_version)// -> /latest_version
       .service(routes::video::video_endpoint)// -> /api/v1/videos/{video_id}
       .service(routes::video::video_thumbnail_proxy)// -> /vi/{video_id}/{file_name}.jpg
