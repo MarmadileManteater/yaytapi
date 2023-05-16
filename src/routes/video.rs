@@ -250,7 +250,7 @@ pub async fn latest_version(params: Query<LatestVersionQueryParams>, app_setting
       HttpResponse::build(StatusCode::from_u16(301).unwrap()).insert_header(("Location", url)).body("")
     },
     None => {
-      HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"No streams found matching the given itag: {}\", \"available_streams\": [{}] }}", itag, available_itags.into_iter().map(|e| format!("{}", e)).collect::<Vec<String>>().join(",")))
+      HttpResponse::build(StatusCode::from_u16(404).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"No streams found matching the given itag: {}\", \"available_streams\": [{}] }}", itag, available_itags.into_iter().map(|e| format!("{}", e)).collect::<Vec<String>>().join(",")))
     }
   }
 }
