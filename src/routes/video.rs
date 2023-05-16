@@ -1,5 +1,5 @@
 
-use serde_json::{json, Value, to_string_pretty, to_string, from_str};
+use serde_json::{json, Value, to_string_pretty, to_string, from_str, Map};
 use serde::{Serialize, Deserialize};
 use chrono::prelude::Utc;
 use actix_web::web::{Path, Data, Query};
@@ -78,7 +78,7 @@ impl Display for FetchPlayerError {
     write!(f, "{}", match self {
       FetchPlayerError::Reqwest(error) => format!("Error making request to innertube {}", error),
       FetchPlayerError::PlayerJsIdNotFound => format!("No player.js id found in `/iframe_api` response"),
-      FetchPlayerError::SignatureTimestampNotFound(error) => format!("Unable to parse sig timestamp from player.js response"),
+      FetchPlayerError::SignatureTimestampNotFound(_) => format!("Unable to parse sig timestamp from player.js response"),
       FetchPlayerError::FailedToSerializePlayer => format!("Failed to serialize the JSON response from innertube (this probably means the response was the wrong mime type)"),
       FetchPlayerError::ResponseUnplayable => format!("Response is unplayable"),
       FetchPlayerError::LoginRequired => format!("Login required")
@@ -210,6 +210,45 @@ pub struct InnerTubeResponse {
   player: Value
 }
 
+const DEFAULT_FIELDS: [&str; 26] = ["title", "videoId", "videoThumbnails", "description", "descriptionHtml", "published", "publishedText", "keywords", "viewCount", "likeCount", "isFamilyFriendly","allowedRegions", "author", "authorId", "authorUrl", "authorThumbnails", "subCountText", "lengthSeconds", "allowRatings", "isListed", "liveNow", "isUpcoming", "adaptiveFormats", "formatStreams", "captions", "recommendedVideos"];
+
+trait AreFieldsInValue {
+  fn are_all_fields_in_value(&self, fields: &Vec::<String>) -> bool;
+}
+impl AreFieldsInValue for Map<String, Value> {
+  fn are_all_fields_in_value(&self, fields: &Vec::<String>) -> bool {
+    for i in 0..fields.len() {
+      if !self.contains_key(&fields[i]) {
+        return false;
+      }
+    }
+    true
+  }
+}
+
+fn filter_out_everything_but_fields(mut json: Map<String, Value>, fields: &Vec::<String>) -> Map<String, Value> {
+  let keys = json.keys().into_iter().map(|s| String::from(s)).collect::<Vec::<String>>();
+  for i in 0..keys.len() {
+    let key = &keys[i];
+    if !fields.contains(key) {
+      json.remove(key);
+    }
+  }
+  json
+}
+
+fn sort_to_inv_schema(json: Map<String, Value>, fields: &Vec::<String>) -> Map<String, Value> {
+  let mut output = Map::<String, Value>::new();
+  let keys = json.keys().into_iter().map(|s| String::from(s)).collect::<Vec::<String>>();
+  for i in 0..fields.len() {
+    let field = &fields[i];
+    if keys.contains(field) {
+      output.insert(String::from(field), json[field].clone());
+    }
+  }
+  output
+}
+
 #[get("/api/v1/videos/{video_id}")]
 pub async fn video_endpoint(path: Path<String>, query: Query<VideoEndpointQueryParams>, app_settings: Data<AppSettings>) -> impl Responder {
   let video_id = path.into_inner();
@@ -226,14 +265,18 @@ pub async fn video_endpoint(path: Path<String>, query: Query<VideoEndpointQueryP
         vec!(String::from(fields))
       }
     },
-    None => Vec::<String>::new()
+    None => DEFAULT_FIELDS.into_iter().map(|string| String::from(string)).collect::<Vec::<String>>()
   };
-  
   let Ok(player_res) = fetch_player_with_cache(&video_id, &lang, &app_settings).await else { todo!() };
-  let json = fmt_inv(&player_res, &lang);
-  let Ok(next_res) = fetch_next_with_cache(&video_id, &lang, &app_settings).await else { todo!() };
-  let json = fmt_inv_with_existing_map(&next_res, &lang, json);
-
+  let mut json = fmt_inv(&player_res, &lang);
+  if !json.are_all_fields_in_value(&fields) {
+    let Ok(next_res) = fetch_next_with_cache(&video_id, &lang, &app_settings).await else { todo!() };
+    json = fmt_inv_with_existing_map(&next_res, &lang, json);
+  }
+  json = filter_out_everything_but_fields(json, &fields);
+  if app_settings.sort_to_inv_schema {
+    json = sort_to_inv_schema(json, &fields);
+  }
   let json_response = match if is_pretty {
     to_string_pretty(&json)
   } else {
@@ -254,9 +297,9 @@ pub async fn video_thumbnail_proxy(params: Path<(String, String)>) -> impl Respo
   let client = Client::new();
   match client.get(generate_yt_video_thumbnail_url(&video_id, &file_name)).send().await {
     Ok(thumbnail_response) => {
-      HttpResponse::Ok().content_type("image/jpeg").streaming(thumbnail_response.bytes_stream())
+      HttpResponse::Ok().content_type("image/jpeg").status(thumbnail_response.status()).streaming(thumbnail_response.bytes_stream())
     },
-    Err(_err) => HttpResponse::Ok().body("error")
+    Err(err) => HttpResponse::build(StatusCode::from_u16(404).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"{}\" }}", err))
   }
 }
 

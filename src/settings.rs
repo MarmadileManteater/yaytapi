@@ -12,11 +12,13 @@ pub enum DbType {
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct AppSettings {
-  pub print_config: bool,
+  pub print_config: bool, 
   pub enable_actix_web_logger: bool,
-  pub decipher_streams: bool,
-  pub enable_local_streaming: bool,
-  pub enable_cors: bool,
+  // Sorts the output of yayti to the order of invidious
+  pub sort_to_inv_schema: bool,
+  pub decipher_streams: bool, // 📝 UNIMPLEMENTED
+  pub enable_local_streaming: bool, // 📝 UNIMPLEMENTED
+  pub enable_cors: bool, // 📝 UNIMPLEMENTED
   pub cache_timeout: i32,
   pub cache_requests: bool,
   pub ip_address: String,
@@ -58,6 +60,7 @@ impl AppSettings {
     AppSettings {
       print_config: args.contains(&String::from("--print-config")),
       enable_actix_web_logger: !args.contains(&String::from("--no-logs")),
+      sort_to_inv_schema: !args.contains(&String::from("--no-sort")),
       decipher_streams: args.contains(&String::from("--decipher-streams")) || enabled_all_features,
       enable_local_streaming: args.contains(&String::from("--enable-local-streaming")) || enabled_all_features,
       enable_cors: args.contains(&String::from("--enable-cors")) || enabled_all_features,
