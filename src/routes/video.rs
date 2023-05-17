@@ -148,7 +148,6 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
               return Err(FetchPlayerError::FailedToSerializePlayer);
             }
           };
-          let mut streams = Vec::<String>::new();
           match json["playabilityStatus"]["status"].as_str() {
             Some(status) => {
               if status == "LOGIN_REQUIRED" {
@@ -160,6 +159,7 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
             },
             None => {}
           };
+          let mut streams = Vec::<String>::new();
           let Some(formats) = json["streamingData"]["formats"].as_array() else { todo!() };
           let Some(adaptive_formats) = json["streamingData"]["adaptiveFormats"].as_array() else { todo!() };
           match formats[0]["url"].as_str() {
@@ -267,7 +267,17 @@ pub async fn video_endpoint(path: Path<String>, query: Query<VideoEndpointQueryP
     },
     None => DEFAULT_FIELDS.into_iter().map(|string| String::from(string)).collect::<Vec::<String>>()
   };
-  let Ok(player_res) = fetch_player_with_cache(&video_id, &lang, &app_settings).await else { todo!() };
+  let player_res = match fetch_player_with_cache(&video_id, &lang, &app_settings).await {
+    Ok(player_res) => player_res,
+    Err(fetch_player_error) => {
+      let status_code = match fetch_player_error {
+        FetchPlayerError::LoginRequired => 403,//🤷‍♀️ this might not be the best response code
+        FetchPlayerError::ResponseUnplayable => 404,
+        _ => 500
+      };
+      return HttpResponse::build(StatusCode::from_u16(status_code).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Failed to fetch `player` endpoint\", \"inner_message\": \"{}\" }}", fetch_player_error));
+    }
+  };
   let mut json = fmt_inv(&player_res, &lang);
   if !json.are_all_fields_in_value(&fields) {
     let Ok(next_res) = fetch_next_with_cache(&video_id, &lang, &app_settings).await else { todo!() };
