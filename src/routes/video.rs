@@ -214,7 +214,7 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
   }
 }
 
-const DEFAULT_FIELDS: [&str; 36] = ["type", "title", "videoId", "videoThumbnails", "storyboards", "description", "descriptionHtml", "published", "publishedText", "keywords", "viewCount", "likeCount", "dislikeCount", "paid", "premium", "isFamilyFriendly", "allowedRegions", "genre", "genreUrl", "author", "authorId", "authorUrl", "authorThumbnails", "subCountText", "lengthSeconds", "allowRatings", "rating", "isListed", "liveNow", "isUpcoming", "dashUrl", "adaptiveFormats", "formatStreams", "captions", "recommendedVideos", "musicTracks"];
+const DEFAULT_FIELDS: [&str; 37] = ["type", "title", "videoId", "videoThumbnails", "storyboards", "description", "descriptionHtml", "published", "publishedText", "keywords", "viewCount", "likeCount", "dislikeCount", "paid", "premium", "isFamilyFriendly", "allowedRegions", "genre", "genreUrl", "author", "authorId", "authorUrl", "authorThumbnails", "subCountText", "lengthSeconds", "allowRatings", "rating", "isListed", "liveNow", "isUpcoming", "hlsUrl", "dashUrl", "adaptiveFormats", "formatStreams", "captions", "recommendedVideos", "musicTracks"];
 
 trait AreFieldsInValue {
   fn are_all_fields_in_value(&self, fields: &Vec::<String>) -> bool;
@@ -335,6 +335,11 @@ pub async fn video_endpoint(path: Path<String>, query: Query<VideoEndpointQueryP
   if app_settings.retain_null_keys {
     json = add_in_missing_fields(json, &fields);
   }
+  // hls url is optionally included
+  match json["hlsUrl"].as_str() {
+    Some(_) => {},
+    None => {json.remove(&String::from("hlsUrl"));}
+  };
   if app_settings.sort_to_inv_schema {
     json = sort_to_inv_schema(json, &fields);
   }
