@@ -13,15 +13,28 @@ pub enum DbType {
 #[derive(Deserialize, Serialize, Clone)]
 pub struct AppSettings {
   pub print_config: bool, 
+  //
   pub enable_actix_web_logger: bool,
   // Sorts the output of yayti to the order of invidious
+  // DEFAULTS: true
+  // can be disabled with `--no-sort`
   pub sort_to_inv_schema: bool,
+  // Whether or not to return every key in each schema or to return only the non-null keys
+  // DEFAULTS: true
+  // can be disabled with `--hide-null-fields`
+  pub retain_null_keys: bool,
+  // Optionally include the innertube response used to parse out the data (useful for debugging & development)
+  // DEFAULTS: false
+  // can be enabled with `--return-innertube`
+  pub return_innertube_response: bool,
   pub decipher_streams: bool, // 📝 UNIMPLEMENTED
   pub enable_local_streaming: bool, // 📝 UNIMPLEMENTED
   pub enable_cors: bool, // 📝 UNIMPLEMENTED
   pub cache_timeout: i32,
   pub cache_requests: bool,
+  // can be set with `--ip-address=127.0.0.1`
   pub ip_address: String,
+  // can be set with `--port=8080`
   pub port: String,
   pub db_connection_string: Option<String>,
   pub db_name: String,
@@ -61,6 +74,8 @@ impl AppSettings {
       print_config: args.contains(&String::from("--print-config")),
       enable_actix_web_logger: !args.contains(&String::from("--no-logs")),
       sort_to_inv_schema: !args.contains(&String::from("--no-sort")),
+      retain_null_keys: !args.contains(&String::from("--hide-null-fields")),
+      return_innertube_response: args.contains(&String::from("--return-innertube")),
       decipher_streams: args.contains(&String::from("--decipher-streams")) || enabled_all_features,
       enable_local_streaming: args.contains(&String::from("--enable-local-streaming")) || enabled_all_features,
       enable_cors: args.contains(&String::from("--enable-cors")) || enabled_all_features,

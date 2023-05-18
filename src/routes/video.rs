@@ -6,7 +6,7 @@ use actix_web::web::{Path, Data, Query};
 use actix_web::{HttpResponse, Responder, get};
 use yayti::extractors::{ciphers::get_player_js_id, ciphers::get_player_response, innertube::{fetch_next,fetch_player_with_sig_timestamp}};
 use yayti::parsers::{ClientContext, ciphers::{extract_sig_timestamp, decipher_streams}, web::video::{fmt_inv_with_existing_map, fmt_inv, get_legacy_formats, get_adaptive_formats}};
-use yayti::helpers::generate_yt_video_thumbnail_url;
+use yayti::helpers::{generate_yt_video_thumbnail_url,generate_yt_video_thumbnails};
 use reqwest::Client;
 use std::str::FromStr;
 use std::num::ParseIntError;
@@ -160,29 +160,46 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
             None => {}
           };
           let mut streams = Vec::<String>::new();
-          let Some(formats) = json["streamingData"]["formats"].as_array() else { todo!() };
-          let Some(adaptive_formats) = json["streamingData"]["adaptiveFormats"].as_array() else { todo!() };
-          match formats[0]["url"].as_str() {
-            Some(_) => {},
-            None => {
-              for k in 0..formats.len() {
-                streams.push(String::from(formats[k]["signatureCipher"].as_str().unwrap()));
-              }
-              for k in 0..adaptive_formats.len() {
-                streams.push(String::from(adaptive_formats[k]["signatureCipher"].as_str().unwrap()));
-              }
-              let Ok(deciphered_streams) = decipher_streams(streams, &player_js_response) else { todo!() };
-              let formats_len = formats.len();
-              let adaptive_len = adaptive_formats.len();
-              let mut i = 0;
-              for k in 0..formats_len {
-                json["streamingData"]["formats"][k]["url"] = json!(deciphered_streams[i]);
-                i = i + 1;
-              }
-              for k in 0..adaptive_len {
-                json["streamingData"]["adaptiveFormats"][k]["url"] = json!(deciphered_streams[i]);
-                i = i + 1;
-              }
+          let empty_vec = Vec::new();
+          let formats = match json["streamingData"]["formats"].as_array() {
+            Some(formats) => formats,
+            None => &empty_vec
+          };
+          let adaptive_formats = match json["streamingData"]["adaptiveFormats"].as_array() {
+            Some(formats) => formats,
+            None => &empty_vec
+          };
+          let need_to_decipher = if formats.len() > 0 {
+            match formats[0]["url"].as_str() {
+              Some(_) => false,
+              None => true
+            }
+          } else if adaptive_formats.len() > 0 {
+            match adaptive_formats[0]["url"].as_str() {
+              Some(_) => false,
+              None => true
+            }
+          } else {
+            false
+          };
+          if need_to_decipher {
+            for k in 0..formats.len() {
+              streams.push(String::from(formats[k]["signatureCipher"].as_str().unwrap()));
+            }
+            for k in 0..adaptive_formats.len() {
+              streams.push(String::from(adaptive_formats[k]["signatureCipher"].as_str().unwrap()));
+            }
+            let Ok(deciphered_streams) = decipher_streams(streams, &player_js_response) else { todo!() };
+            let formats_len = formats.len();
+            let adaptive_len = adaptive_formats.len();
+            let mut i = 0;
+            for k in 0..formats_len {
+              json["streamingData"]["formats"][k]["url"] = json!(deciphered_streams[i]);
+              i = i + 1;
+            }
+            for k in 0..adaptive_len {
+              json["streamingData"]["adaptiveFormats"][k]["url"] = json!(deciphered_streams[i]);
+              i = i + 1;
             }
           }
           json["timestamp"] = Utc::now().timestamp().into();
@@ -197,20 +214,7 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
   }
 }
 
-#[derive(Deserialize)]
-pub struct VideoEndpointQueryParams {
-  hl: Option<String>,
-  fields: Option<String>,
-  pretty: Option<i32>
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct InnerTubeResponse {
-  next: Value,
-  player: Value
-}
-
-const DEFAULT_FIELDS: [&str; 26] = ["title", "videoId", "videoThumbnails", "description", "descriptionHtml", "published", "publishedText", "keywords", "viewCount", "likeCount", "isFamilyFriendly","allowedRegions", "author", "authorId", "authorUrl", "authorThumbnails", "subCountText", "lengthSeconds", "allowRatings", "isListed", "liveNow", "isUpcoming", "adaptiveFormats", "formatStreams", "captions", "recommendedVideos"];
+const DEFAULT_FIELDS: [&str; 36] = ["type", "title", "videoId", "videoThumbnails", "storyboards", "description", "descriptionHtml", "published", "publishedText", "keywords", "viewCount", "likeCount", "dislikeCount", "paid", "premium", "isFamilyFriendly", "allowedRegions", "genre", "genreUrl", "author", "authorId", "authorUrl", "authorThumbnails", "subCountText", "lengthSeconds", "allowRatings", "rating", "isListed", "liveNow", "isUpcoming", "dashUrl", "adaptiveFormats", "formatStreams", "captions", "recommendedVideos", "musicTracks"];
 
 trait AreFieldsInValue {
   fn are_all_fields_in_value(&self, fields: &Vec::<String>) -> bool;
@@ -237,6 +241,16 @@ fn filter_out_everything_but_fields(mut json: Map<String, Value>, fields: &Vec::
   json
 }
 
+fn add_in_missing_fields(mut json: Map<String, Value>, fields: &Vec::<String>) -> Map<String, Value> {
+  let keys = json.keys().into_iter().map(|s| String::from(s)).collect::<Vec::<String>>();
+  for field in fields {
+    if !keys.contains(field) {
+      json.insert(String::from(field), json!(None::<String>));
+    }
+  }
+  json
+}
+
 fn sort_to_inv_schema(json: Map<String, Value>, fields: &Vec::<String>) -> Map<String, Value> {
   let mut output = Map::<String, Value>::new();
   let keys = json.keys().into_iter().map(|s| String::from(s)).collect::<Vec::<String>>();
@@ -247,6 +261,19 @@ fn sort_to_inv_schema(json: Map<String, Value>, fields: &Vec::<String>) -> Map<S
     }
   }
   output
+}
+
+#[derive(Deserialize)]
+pub struct VideoEndpointQueryParams {
+  hl: Option<String>,
+  fields: Option<String>,
+  pretty: Option<i32>
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct InnerTubeResponse {
+  next: Option<Value>,
+  player: Value
 }
 
 #[get("/api/v1/videos/{video_id}")]
@@ -278,14 +305,41 @@ pub async fn video_endpoint(path: Path<String>, query: Query<VideoEndpointQueryP
       return HttpResponse::build(StatusCode::from_u16(status_code).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Failed to fetch `player` endpoint\", \"inner_message\": \"{}\" }}", fetch_player_error));
     }
   };
+  let mut innertube = InnerTubeResponse {
+    next: None,
+    player: player_res.clone()
+  };
   let mut json = fmt_inv(&player_res, &lang);
   if !json.are_all_fields_in_value(&fields) {
     let Ok(next_res) = fetch_next_with_cache(&video_id, &lang, &app_settings).await else { todo!() };
     json = fmt_inv_with_existing_map(&next_res, &lang, json);
+    innertube.next = Some(next_res);
   }
   json = filter_out_everything_but_fields(json, &fields);
+  json.insert(String::from("captions"), json!([]));
+  // video thumbnails can be generated without making a request
+  if !json.contains_key("videoThumbnails") {
+    json.insert(String::from("videoThumbnails"), json!(generate_yt_video_thumbnails(&video_id)));
+  }
+  // keywords should always be an array an never null
+  if !json.contains_key("keywords") {
+    json.insert(String::from("keywords"), json!([]));
+  }
+  // fields that iv keeps, but don't get populated
+  if !json.contains_key("rating") {
+    json.insert(String::from("rating"), json!(0));
+  }
+  if !json.contains_key("dislikeCount") {
+    json.insert(String::from("dislikeCount"), json!(0));
+  }
+  if app_settings.retain_null_keys {
+    json = add_in_missing_fields(json, &fields);
+  }
   if app_settings.sort_to_inv_schema {
     json = sort_to_inv_schema(json, &fields);
+  }
+  if app_settings.return_innertube_response {
+    json.insert(String::from("innertube"), json!(innertube));
   }
   let json_response = match if is_pretty {
     to_string_pretty(&json)
