@@ -101,7 +101,7 @@ pub enum FetchPlayerError {
   FailedToSerializePlayer,
   ResponseUnplayable,
   LoginRequired,
-  FailedToDecipher
+  FailedToDecipher(String)
 }
 
 impl Display for FetchPlayerError {
@@ -113,7 +113,7 @@ impl Display for FetchPlayerError {
       FetchPlayerError::FailedToSerializePlayer => format!("Failed to serialize the JSON response from innertube (this probably means the response was the wrong mime type)"),
       FetchPlayerError::ResponseUnplayable => format!("Response is unplayable"),
       FetchPlayerError::LoginRequired => format!("Login required"),
-      FetchPlayerError::FailedToDecipher => format!("Failed to decipher")
+      FetchPlayerError::FailedToDecipher(error) => format!("Failed to decipher: {}", error)
     })
   }
 }
@@ -187,7 +187,7 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
               match decipher_streams(streams, &player_js_response) {
                 Ok(streams) => streams,
                 Err(error) => {
-                  return Err(FetchPlayerError::FailedToDecipher);
+                  return Err(FetchPlayerError::FailedToDecipher(error));
                 }
               }
             } else {
@@ -504,6 +504,13 @@ pub async fn decipher_stream(params: Query<DecipherStreamQueryParams>, app_setti
         return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"{}\" }}", error))
       }
     };
+    // refuse to execute anything that contains " ' ; function for while ( { } ) [ ]
+    let input_blacklist = ["\"", "'", ";", "function", "for", "while", "(", "{", "[", "]", "}", ")"];
+    for item in input_blacklist {
+      if signature_cipher.contains(item) {
+        return HttpResponse::build(StatusCode::from_u16(400).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Refusing to execute potentially malicious payload\" }}"))
+      }
+    }
     let db = app_settings.get_json_db().await;
     let (player_js_res, _, _) = match fetch_player_js_with_cache(&db, &app_settings, Some(String::from(&params.player_js_id))).await {
       Ok(player_js) => player_js,
