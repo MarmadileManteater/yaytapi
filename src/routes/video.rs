@@ -6,7 +6,7 @@ use actix_web::web::{Path, Data, Query};
 use actix_web::{HttpResponse, Responder, get};
 use yayti::extractors::{ciphers::get_player_js_id, ciphers::get_player_response, innertube::{fetch_next,fetch_player_with_sig_timestamp}};
 use yayti::parsers::{ClientContext, ciphers::{extract_sig_timestamp, decipher_streams}, ciphers, web::video::{fmt_inv_with_existing_map, fmt_inv, get_legacy_formats, get_adaptive_formats}};
-use yayti::helpers::{generate_yt_video_thumbnail_url,generate_yt_video_thumbnails};
+use yayti::helpers::{generate_yt_video_thumbnail_url,generate_yt_video_thumbnails_within_max_size};
 use reqwest::Client;
 use std::str::FromStr;
 use std::num::ParseIntError;
@@ -19,13 +19,16 @@ use crate::settings::AppSettings;
 use crate::helpers::get_previous_data;
 use crate::helpers::DbWrapper;
 
-async fn fetch_player_js_with_cache(db: &DbWrapper, app_settings: &AppSettings) -> Result<(String, i32), FetchPlayerError> {
-  let player_js_id = match get_player_js_id().await {
-    Ok(player_js_id) => player_js_id,
-    Err(error) => {
-      match error {
-        Some(error) => return Err(FetchPlayerError::Reqwest(error)),
-        None => return Err(FetchPlayerError::PlayerJsIdNotFound)
+async fn fetch_player_js_with_cache(db: &DbWrapper, app_settings: &AppSettings, player_js_id: Option<String>) -> Result<(String, i32, String), FetchPlayerError> {
+  let player_js_id = match player_js_id {
+    Some (player_js_id) => player_js_id,
+    None => match get_player_js_id().await {
+      Ok(player_js_id) => player_js_id,
+      Err(error) => {
+        match error {
+          Some(error) => return Err(FetchPlayerError::Reqwest(error)),
+          None => return Err(FetchPlayerError::PlayerJsIdNotFound)
+        }
       }
     }
   };
@@ -59,11 +62,11 @@ async fn fetch_player_js_with_cache(db: &DbWrapper, app_settings: &AppSettings) 
     db.insert_json("player", "player.js-id", &json!(player_js_id)).await;
     db.insert_json("player", "player.js", &json!(player_js_response)).await;
     db.insert_json("player", "signature_timestamp", &json!(signature_timestamp)).await;
-    Ok((player_js_response, signature_timestamp))
+    Ok((player_js_response, signature_timestamp, player_js_id))
   } else {
     let Some(player_js_response) = get_previous_data("player", "player.js", &db, app_settings).await else { todo!() };
     let Some(signature_timestamp) = get_previous_data("player", "signature_timestamp", &db, app_settings).await else { todo!() };
-    Ok((String::from(player_js_response.as_str().unwrap()), signature_timestamp.as_i64().unwrap() as i32))
+    Ok((String::from(player_js_response.as_str().unwrap()), signature_timestamp.as_i64().unwrap() as i32, player_js_id))
   }
 }
 
@@ -98,8 +101,7 @@ pub enum FetchPlayerError {
   FailedToSerializePlayer,
   ResponseUnplayable,
   LoginRequired,
-  FailedToDecipher,
-  FailedToUrlEncodeSignatureCipher
+  FailedToDecipher
 }
 
 impl Display for FetchPlayerError {
@@ -111,8 +113,7 @@ impl Display for FetchPlayerError {
       FetchPlayerError::FailedToSerializePlayer => format!("Failed to serialize the JSON response from innertube (this probably means the response was the wrong mime type)"),
       FetchPlayerError::ResponseUnplayable => format!("Response is unplayable"),
       FetchPlayerError::LoginRequired => format!("Login required"),
-      FetchPlayerError::FailedToDecipher => format!("Failed to decipher"),
-      FetchPlayerError::FailedToUrlEncodeSignatureCipher => format!("Failed to url encode signatureCipher")
+      FetchPlayerError::FailedToDecipher => format!("Failed to decipher")
     })
   }
 }
@@ -125,7 +126,7 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
       Ok(json)
     },
     None => {
-      let (player_js_response, signature_timestamp) = match fetch_player_js_with_cache(&db, &app_settings).await {
+      let (player_js_response, signature_timestamp, player_js_id) = match fetch_player_js_with_cache(&db, &app_settings, None).await {
         Ok(response) => response,
         Err(error) => {
           return Err(error);
@@ -191,7 +192,7 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
               }
             } else {
               streams.into_iter().map(|stream| {
-                Some(format!("{}/decipher_stream?signature_cipher={}", hostname.unwrap_or(""), encode(&stream)))
+                Some(format!("{}/decipher_stream?signature_cipher={}&player_js_id={}", hostname.unwrap_or(""), encode(&stream), &player_js_id))
               }).collect::<Vec::<Option<String>>>()
             };
             let formats_len = formats.len();
@@ -329,10 +330,38 @@ pub async fn video_endpoint(req: HttpRequest, path: Path<String>, query: Query<V
     innertube.next = Some(next_res);
   }
   json = filter_out_everything_but_fields(json, &fields);
+  // figure out what thumbnail sizes exist from the streams data we know about
+  let mut max_size = 680;
+  if fields.contains(&String::from("formatStreams")) {
+    match json["formatStreams"].as_array() {
+      Some(streams) => {
+        for stream in streams {
+          let width = i32::from_str(stream["size"].as_str().unwrap_or("0").split("x").collect::<Vec::<&str>>()[0]).unwrap_or(0);
+          if max_size < width {
+            max_size = width;
+          }
+        }
+      },
+      None => {}
+    }
+  }
+  if fields.contains(&String::from("adaptiveStreams")) {
+    match json["adaptiveStreams"].as_array() {
+      Some(streams) => {
+        for stream in streams {
+          let width = i32::from_str(stream["size"].as_str().unwrap_or("0").split("x").collect::<Vec::<&str>>()[0]).unwrap_or(0);
+          if max_size < width {
+            max_size = width;
+          }
+        }
+      },
+      None => {}
+    }
+  }
   json.insert(String::from("captions"), json!([]));
   // video thumbnails can be generated without making a request
   if !json.contains_key("videoThumbnails") {
-    json.insert(String::from("videoThumbnails"), json!(generate_yt_video_thumbnails(&video_id)));
+    json.insert(String::from("videoThumbnails"), json!(generate_yt_video_thumbnails_within_max_size(&video_id, max_size)));
   }
   // keywords should always be an array an never null
   if !json.contains_key("keywords") {
@@ -355,13 +384,19 @@ pub async fn video_endpoint(req: HttpRequest, path: Path<String>, query: Query<V
   if app_settings.sort_to_inv_schema {
     json = sort_to_inv_schema(json, &fields);
   }
-  json.insert(String::from("comments"), json!(yayti::parsers::web::video::get_comment_continuations(&innertube.next.as_ref().unwrap()).unwrap_or(vec!()).into_iter().map(|continuation| {
-    CommentUrl {
-      title: format!("{}", continuation.title),
-      url: format!("/api/v1/comments/{}?continuation={}", video_id, continuation.token),
-      token: format!("{}", continuation.token)
-    }
-  }).collect::<Vec::<CommentUrl>>()));
+  // TODO integrate comments into fields API
+  match &innertube.next.as_ref() {
+    Some(next) => {
+      json.insert(String::from("comments"), json!(yayti::parsers::web::video::get_comment_continuations(next).unwrap_or(vec!()).into_iter().map(|continuation| {
+        CommentUrl {
+          title: format!("{}", continuation.title),
+          url: format!("/api/v1/comments/{}?continuation={}", video_id, continuation.token),
+          token: format!("{}", continuation.token)
+        }
+      }).collect::<Vec::<CommentUrl>>()));
+    },
+    None => {}
+  }
   if app_settings.return_innertube_response {
     json.insert(String::from("innertube"), json!(innertube));
   }
@@ -456,7 +491,8 @@ pub async fn latest_version(params: Query<LatestVersionQueryParams>, app_setting
 
 #[derive(Deserialize)]
 pub struct DecipherStreamQueryParams {
-  signature_cipher: String
+  signature_cipher: String,
+  player_js_id: String
 }
 
 #[get("/decipher_stream")]
@@ -469,7 +505,7 @@ pub async fn decipher_stream(params: Query<DecipherStreamQueryParams>, app_setti
       }
     };
     let db = app_settings.get_json_db().await;
-    let (player_js_res, _) = match fetch_player_js_with_cache(&db, &app_settings).await {
+    let (player_js_res, _, _) = match fetch_player_js_with_cache(&db, &app_settings, Some(String::from(&params.player_js_id))).await {
       Ok(player_js) => player_js,
       Err(error) => {
         return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Failed to fetch `/player` endpoint\", \"inner_message\": \"{}\" }}", error))
@@ -480,7 +516,7 @@ pub async fn decipher_stream(params: Query<DecipherStreamQueryParams>, app_setti
         HttpResponse::build(StatusCode::from_u16(302).unwrap()).insert_header(("Location", deciphered_url)).content_type("application/json").body("")
       },
       Err(error) => {
-        HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"{}\" }}", error))
+        HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"{}\" }}", error.replace("\"", "\\\"")))
       }
     }
     
