@@ -18,5 +18,6 @@ substring = "1.4.5"
 tokio = "1.28.0"
 unqlite = "1.5.0"
 yayti = { git = "https://github.com/MarmadileManteater/yayti", branch = "0.2.0", version = "0.2.0", features = ["decipher_streams", "parse_languages_to_published" ] }
+urlencoding = "2.1.2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

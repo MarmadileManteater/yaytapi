@@ -4,7 +4,8 @@ use serde::{Serialize, Deserialize};
 use mongodb::{Database};
 use mongodb::bson::{doc};
 use log::{warn,error};
-use crate::settings::DbType;
+use chrono::Utc;
+use crate::settings::{AppSettings, DbType};
 
 pub trait JsonDb {
   fn seek_for_json(&self, key: &str) -> Option<Value>;
@@ -127,3 +128,29 @@ impl DbWrapper {
     }
   }
 }
+
+
+pub async fn get_previous_data(collection: &str, key: &str, db: &DbWrapper, app_settings: &AppSettings) -> Option<Value> {
+  if app_settings.cache_requests {
+    match db.seek_for_json(collection, key).await {
+      Some(json) => {
+        match json["timestamp"].as_i64() {
+          Some(timestamp) => {
+            let current_timestamp = Utc::now().timestamp();
+            let offset = current_timestamp - timestamp;
+            if offset as i32 > app_settings.cache_timeout {
+              db.delete(collection, key).await;
+              None
+            } else {
+              Some(json)
+            }
+          },
+          None => Some(json)
+        }
+      },
+      None => None
+    }
+  } else {
+    None
+  }
+ }

@@ -3121,6 +3121,7 @@ dependencies = [
  "substring",
  "tokio",
  "unqlite",
+ "urlencoding",
  "yayti",
 ]
 

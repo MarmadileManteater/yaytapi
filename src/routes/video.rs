@@ -5,39 +5,66 @@ use chrono::prelude::Utc;
 use actix_web::web::{Path, Data, Query};
 use actix_web::{HttpResponse, Responder, get};
 use yayti::extractors::{ciphers::get_player_js_id, ciphers::get_player_response, innertube::{fetch_next,fetch_player_with_sig_timestamp}};
-use yayti::parsers::{ClientContext, ciphers::{extract_sig_timestamp, decipher_streams}, web::video::{fmt_inv_with_existing_map, fmt_inv, get_legacy_formats, get_adaptive_formats}};
+use yayti::parsers::{ClientContext, ciphers::{extract_sig_timestamp, decipher_streams}, ciphers, web::video::{fmt_inv_with_existing_map, fmt_inv, get_legacy_formats, get_adaptive_formats}};
 use yayti::helpers::{generate_yt_video_thumbnail_url,generate_yt_video_thumbnails};
 use reqwest::Client;
 use std::str::FromStr;
 use std::num::ParseIntError;
 use actix_web::http::StatusCode;
+use actix_web::HttpRequest;
 use std::fmt::{Formatter, Display};
+use urlencoding::decode;
+use urlencoding::encode;
 use crate::settings::AppSettings;
+use crate::helpers::get_previous_data;
 use crate::helpers::DbWrapper;
 
-async fn get_previous_data(collection: &str, key: &str, db: &DbWrapper, app_settings: &AppSettings) -> Option<Value> {
- if app_settings.cache_requests {
-   match db.seek_for_json(collection, key).await {
-     Some(json) => {
-       match json["timestamp"].as_i64() {
-         Some(timestamp) => {
-           let current_timestamp = Utc::now().timestamp();
-           let offset = current_timestamp - timestamp;
-           if offset as i32 > app_settings.cache_timeout {
-             db.delete(collection, key).await;
-             None
-           } else {
-             Some(json)
-           }
-         },
-         None => Some(json)
-       }
-     },
-     None => None
-   }
- } else {
-   None
- }
+async fn fetch_player_js_with_cache(db: &DbWrapper, app_settings: &AppSettings) -> Result<(String, i32), FetchPlayerError> {
+  let player_js_id = match get_player_js_id().await {
+    Ok(player_js_id) => player_js_id,
+    Err(error) => {
+      match error {
+        Some(error) => return Err(FetchPlayerError::Reqwest(error)),
+        None => return Err(FetchPlayerError::PlayerJsIdNotFound)
+      }
+    }
+  };
+
+  let previous_js_id = get_previous_data("player", "player.js-id", &db, app_settings).await;
+  let need_new_player_js = match previous_js_id {
+    Some(previous_js_id_str) => {
+      previous_js_id_str.as_str().unwrap_or("") != player_js_id
+    },
+    None => {
+      true
+    }
+  };
+  
+  if need_new_player_js {
+    let player_js_response = match get_player_response(&player_js_id).await {
+      Ok(player_js_response) => player_js_response,
+      Err(error) => {
+        return Err(FetchPlayerError::Reqwest(error));
+      }
+    };
+    let signature_timestamp = match extract_sig_timestamp(&player_js_response) {
+      Ok(signature_timestamp) => signature_timestamp,
+      Err(error) => {
+        return Err(FetchPlayerError::SignatureTimestampNotFound(error));
+      }
+    };
+    db.delete("player", "player.js-id").await;
+    db.delete("player", "player.js").await;
+    db.delete("player", "signature_timestamp").await;
+    db.insert_json("player", "player.js-id", &json!(player_js_id)).await;
+    db.insert_json("player", "player.js", &json!(player_js_response)).await;
+    db.insert_json("player", "signature_timestamp", &json!(signature_timestamp)).await;
+    Ok((player_js_response, signature_timestamp))
+  } else {
+    let Some(player_js_response) = get_previous_data("player", "player.js", &db, app_settings).await else { todo!() };
+    let Some(signature_timestamp) = get_previous_data("player", "signature_timestamp", &db, app_settings).await else { todo!() };
+    Ok((String::from(player_js_response.as_str().unwrap()), signature_timestamp.as_i64().unwrap() as i32))
+  }
 }
 
 async fn fetch_next_with_cache(id: &str, lang: &str, app_settings: &AppSettings) -> Result<Value, reqwest::Error> {
@@ -70,7 +97,9 @@ pub enum FetchPlayerError {
   SignatureTimestampNotFound(ParseIntError),
   FailedToSerializePlayer,
   ResponseUnplayable,
-  LoginRequired
+  LoginRequired,
+  FailedToDecipher,
+  FailedToUrlEncodeSignatureCipher
 }
 
 impl Display for FetchPlayerError {
@@ -81,12 +110,14 @@ impl Display for FetchPlayerError {
       FetchPlayerError::SignatureTimestampNotFound(_) => format!("Unable to parse sig timestamp from player.js response"),
       FetchPlayerError::FailedToSerializePlayer => format!("Failed to serialize the JSON response from innertube (this probably means the response was the wrong mime type)"),
       FetchPlayerError::ResponseUnplayable => format!("Response is unplayable"),
-      FetchPlayerError::LoginRequired => format!("Login required")
+      FetchPlayerError::LoginRequired => format!("Login required"),
+      FetchPlayerError::FailedToDecipher => format!("Failed to decipher"),
+      FetchPlayerError::FailedToUrlEncodeSignatureCipher => format!("Failed to url encode signatureCipher")
     })
   }
 }
 
-async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSettings) -> Result<Value,FetchPlayerError> {
+async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSettings, hostname: Option<&str>) -> Result<Value,FetchPlayerError> {
   let db = app_settings.get_json_db().await;
   let previous_data = get_previous_data("player", &format!("{}-{}", id, lang), &db, app_settings).await;
   match previous_data {
@@ -94,50 +125,11 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
       Ok(json)
     },
     None => {
-      let player_js_id = match get_player_js_id().await {
-        Ok(player_js_id) => player_js_id,
+      let (player_js_response, signature_timestamp) = match fetch_player_js_with_cache(&db, &app_settings).await {
+        Ok(response) => response,
         Err(error) => {
-          match error {
-            Some(error) => return Err(FetchPlayerError::Reqwest(error)),
-            None => return Err(FetchPlayerError::PlayerJsIdNotFound)
-          }
+          return Err(error);
         }
-      };
-
-      let previous_js_id = get_previous_data("player", "player.js-id", &db, app_settings).await;
-      let need_new_player_js = match previous_js_id {
-        Some(previous_js_id_str) => {
-          previous_js_id_str.as_str().unwrap_or("") != player_js_id
-        },
-        None => {
-          true
-        }
-      };
-      
-      let (player_js_response, signature_timestamp) = if need_new_player_js {
-        let player_js_response = match get_player_response(&player_js_id).await {
-          Ok(player_js_response) => player_js_response,
-          Err(error) => {
-            return Err(FetchPlayerError::Reqwest(error));
-          }
-        };
-        let signature_timestamp = match extract_sig_timestamp(&player_js_response) {
-          Ok(signature_timestamp) => signature_timestamp,
-          Err(error) => {
-            return Err(FetchPlayerError::SignatureTimestampNotFound(error));
-          }
-        };
-        db.delete("player", "player.js-id").await;
-        db.delete("player", "player.js").await;
-        db.delete("player", "signature_timestamp").await;
-        db.insert_json("player", "player.js-id", &json!(player_js_id)).await;
-        db.insert_json("player", "player.js", &json!(player_js_response)).await;
-        db.insert_json("player", "signature_timestamp", &json!(signature_timestamp)).await;
-        (player_js_response, signature_timestamp)
-      } else {
-        let Some(player_js_response) = get_previous_data("player", "player.js", &db, app_settings).await else { todo!() };
-        let Some(signature_timestamp) = get_previous_data("player", "signature_timestamp", &db, app_settings).await else { todo!() };
-        (String::from(player_js_response.as_str().unwrap()), signature_timestamp.as_i64().unwrap() as i32)
       };
     
       match fetch_player_with_sig_timestamp(id, signature_timestamp, &ClientContext::default_web(), Some(lang)).await {
@@ -183,13 +175,25 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
             false
           };
           if need_to_decipher {
+            
             for k in 0..formats.len() {
               streams.push(String::from(formats[k]["signatureCipher"].as_str().unwrap()));
             }
             for k in 0..adaptive_formats.len() {
               streams.push(String::from(adaptive_formats[k]["signatureCipher"].as_str().unwrap()));
             }
-            let Ok(deciphered_streams) = decipher_streams(streams, &player_js_response) else { todo!() };
+            let deciphered_streams = if app_settings.decipher_on_video_endpoint {
+              match decipher_streams(streams, &player_js_response) {
+                Ok(streams) => streams,
+                Err(error) => {
+                  return Err(FetchPlayerError::FailedToDecipher);
+                }
+              }
+            } else {
+              streams.into_iter().map(|stream| {
+                Some(format!("{}/decipher_stream?signature_cipher={}", hostname.unwrap_or(""), encode(&stream)))
+              }).collect::<Vec::<Option<String>>>()
+            };
             let formats_len = formats.len();
             let adaptive_len = adaptive_formats.len();
             let mut i = 0;
@@ -276,8 +280,17 @@ pub struct InnerTubeResponse {
   player: Value
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct CommentUrl {
+  title: String,
+  url: String,
+  token: String
+}
+
 #[get("/api/v1/videos/{video_id}")]
-pub async fn video_endpoint(path: Path<String>, query: Query<VideoEndpointQueryParams>, app_settings: Data<AppSettings>) -> impl Responder {
+pub async fn video_endpoint(req: HttpRequest, path: Path<String>, query: Query<VideoEndpointQueryParams>, app_settings: Data<AppSettings>) -> impl Responder {
+  let connection_info = req.connection_info();
+  let uri = String::from(format!("{}://{}", connection_info.scheme(), connection_info.host()));
   let video_id = path.into_inner();
   let lang = query.hl.clone().unwrap_or(String::from("en"));
   let is_pretty = match query.pretty {
@@ -294,7 +307,7 @@ pub async fn video_endpoint(path: Path<String>, query: Query<VideoEndpointQueryP
     },
     None => DEFAULT_FIELDS.into_iter().map(|string| String::from(string)).collect::<Vec::<String>>()
   };
-  let player_res = match fetch_player_with_cache(&video_id, &lang, &app_settings).await {
+  let player_res = match fetch_player_with_cache(&video_id, &lang, &app_settings, Some(&uri)).await {
     Ok(player_res) => player_res,
     Err(fetch_player_error) => {
       let status_code = match fetch_player_error {
@@ -336,13 +349,19 @@ pub async fn video_endpoint(path: Path<String>, query: Query<VideoEndpointQueryP
     json = add_in_missing_fields(json, &fields);
   }
   // hls url is optionally included
-  match json["hlsUrl"].as_str() {
-    Some(_) => {},
-    None => {json.remove(&String::from("hlsUrl"));}
-  };
+  if json.contains_key("hlsUrl") {
+    json.remove(&String::from("hlsUrl"));
+  }
   if app_settings.sort_to_inv_schema {
     json = sort_to_inv_schema(json, &fields);
   }
+  json.insert(String::from("comments"), json!(yayti::parsers::web::video::get_comment_continuations(&innertube.next.as_ref().unwrap()).unwrap_or(vec!()).into_iter().map(|continuation| {
+    CommentUrl {
+      title: format!("{}", continuation.title),
+      url: format!("/api/v1/comments/{}?continuation={}", video_id, continuation.token),
+      token: format!("{}", continuation.token)
+    }
+  }).collect::<Vec::<CommentUrl>>()));
   if app_settings.return_innertube_response {
     json.insert(String::from("innertube"), json!(innertube));
   }
@@ -390,7 +409,7 @@ pub async fn latest_version(params: Query<LatestVersionQueryParams>, app_setting
   let itag = i32::from_str(&params.itag).unwrap_or(0); 
   let lang = params.hl.clone().unwrap_or(String::from("en"));
   let local = &params.local.unwrap_or(false);
-  let player_res = match fetch_player_with_cache(&video_id, &lang, &app_settings).await {
+  let player_res = match fetch_player_with_cache(&video_id, &lang, &app_settings, None).await {
     Ok(player_res) => player_res,
     Err(error) => {
       return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Failed to fetch `/player` endpoint\", \"inner_message\": \"{}\" }}", error))
@@ -434,3 +453,39 @@ pub async fn latest_version(params: Query<LatestVersionQueryParams>, app_setting
     }
   }
 }
+
+#[derive(Deserialize)]
+pub struct DecipherStreamQueryParams {
+  signature_cipher: String
+}
+
+#[get("/decipher_stream")]
+pub async fn decipher_stream(params: Query<DecipherStreamQueryParams>, app_settings: Data<AppSettings>) -> impl Responder {
+  if app_settings.decipher_streams {
+    let signature_cipher = match decode(&params.signature_cipher) {
+      Ok(decoded) => decoded,
+      Err(error) => {
+        return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"{}\" }}", error))
+      }
+    };
+    let db = app_settings.get_json_db().await;
+    let (player_js_res, _) = match fetch_player_js_with_cache(&db, &app_settings).await {
+      Ok(player_js) => player_js,
+      Err(error) => {
+        return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Failed to fetch `/player` endpoint\", \"inner_message\": \"{}\" }}", error))
+      }
+    };
+    match ciphers::decipher_stream(&signature_cipher, &player_js_res) {
+      Ok(deciphered_url) => {
+        HttpResponse::build(StatusCode::from_u16(302).unwrap()).insert_header(("Location", deciphered_url)).content_type("application/json").body("")
+      },
+      Err(error) => {
+        HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"{}\" }}", error))
+      }
+    }
+    
+  } else {
+    HttpResponse::build(StatusCode::from_u16(403).unwrap()).content_type("application/json").body("{ \"type\": \"error\", \"message\": \"Deciphering streams has been disabled.\" }")
+  }
+}
+ 

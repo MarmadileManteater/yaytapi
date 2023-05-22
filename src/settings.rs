@@ -28,6 +28,8 @@ pub struct AppSettings {
   // can be enabled with `--return-innertube`
   pub return_innertube_response: bool,
   pub decipher_streams: bool, // 📝 UNIMPLEMENTED
+  // Optionally pre-decipher all streams in every video endpoint response instead of lazily providing a link to `/decipher_stream`
+  pub decipher_on_video_endpoint: bool,
   pub enable_local_streaming: bool, // 📝 UNIMPLEMENTED
   pub enable_cors: bool, // 📝 UNIMPLEMENTED
   pub cache_timeout: i32,
@@ -77,6 +79,7 @@ impl AppSettings {
       retain_null_keys: !args.contains(&String::from("--hide-null-fields")),
       return_innertube_response: args.contains(&String::from("--return-innertube")),
       decipher_streams: args.contains(&String::from("--decipher-streams")) || enabled_all_features,
+      decipher_on_video_endpoint: args.contains(&String::from("--pre-decipher-streams")),
       enable_local_streaming: args.contains(&String::from("--enable-local-streaming")) || enabled_all_features,
       enable_cors: args.contains(&String::from("--enable-cors")) || enabled_all_features,
       cache_timeout: 60,// 1 minute
