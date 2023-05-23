@@ -5,6 +5,8 @@ use mongodb::{Database};
 use mongodb::bson::{doc};
 use log::{warn,error};
 use chrono::Utc;
+use reqwest::header::{HeaderMap};
+use actix_web::{HttpResponseBuilder, HttpRequest};
 use crate::settings::{AppSettings, DbType};
 
 pub trait JsonDb {
@@ -154,3 +156,31 @@ pub async fn get_previous_data(collection: &str, key: &str, db: &DbWrapper, app_
     None
   }
  }
+pub trait ActixHeadersIntoReqwest {
+  fn get_reqwest_headers(&self) -> HeaderMap;
+}
+
+impl ActixHeadersIntoReqwest for HttpRequest {
+  fn get_reqwest_headers(&self) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    for (header_name, header_value) in self.headers().into_iter() {
+      headers.insert(header_name, header_value.into());
+    };
+    headers
+  }
+}
+ 
+pub trait ReqwestHeadersIntoResponseBuilder {
+  fn add_headers_to_builder(&self, builder: HttpResponseBuilder) -> HttpResponseBuilder;
+}
+
+impl ReqwestHeadersIntoResponseBuilder for HeaderMap {
+  fn add_headers_to_builder(&self, mut builder: HttpResponseBuilder) -> HttpResponseBuilder {
+    for (header_name, header_value) in self {
+      if header_name != "content-length" {
+        builder.insert_header((header_name, header_value.to_str().unwrap()));
+      }
+    }
+    builder
+  }
+}

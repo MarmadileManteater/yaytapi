@@ -2,8 +2,8 @@
 use serde_json::{json, Value, to_string_pretty, to_string, from_str, Map};
 use serde::{Serialize, Deserialize};
 use chrono::prelude::Utc;
-use actix_web::web::{Path, Data, Query};
-use actix_web::{HttpResponse, Responder, get};
+use actix_web::web::{Path, Data, Query, Payload};
+use actix_web::{HttpResponse, Responder, get, route};
 use yayti::extractors::{ciphers::get_player_js_id, ciphers::get_player_response, innertube::{fetch_next,fetch_player_with_sig_timestamp}};
 use yayti::parsers::{ClientContext, ciphers::{extract_sig_timestamp, decipher_streams}, ciphers, web::video::{fmt_inv_with_existing_map, fmt_inv, get_legacy_formats, get_adaptive_formats}};
 use yayti::helpers::{generate_yt_video_thumbnail_url,generate_yt_video_thumbnails_within_max_size};
@@ -15,9 +15,14 @@ use actix_web::HttpRequest;
 use std::fmt::{Formatter, Display};
 use urlencoding::decode;
 use urlencoding::encode;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::UnboundedReceiverStream;
+use futures_util::StreamExt;
 use crate::settings::AppSettings;
 use crate::helpers::get_previous_data;
 use crate::helpers::DbWrapper;
+use crate::helpers::ActixHeadersIntoReqwest;
+use crate::helpers::ReqwestHeadersIntoResponseBuilder;
 
 async fn fetch_player_js_with_cache(db: &DbWrapper, app_settings: &AppSettings, player_js_id_option: Option<String>) -> Result<(String, i32, String), FetchPlayerError> {
   let player_js_id = match &player_js_id_option {
@@ -130,9 +135,9 @@ impl Display for FetchPlayerError {
   }
 }
 
-async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSettings, hostname: Option<&str>) -> Result<Value,FetchPlayerError> {
+async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSettings, local: bool, hostname: Option<&str>) -> Result<Value,FetchPlayerError> {
   let db = app_settings.get_json_db().await;
-  let previous_data = get_previous_data("player", &format!("{}-{}", id, lang), &db, app_settings).await;
+  let previous_data = get_previous_data("player", &format!("{}-{}-{}", id, lang, local), &db, app_settings).await;
   match previous_data {
     Some(json) => {
       Ok(json)
@@ -207,7 +212,7 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
               }
             } else {
               streams.into_iter().map(|stream| {
-                Some(format!("{}/decipher_stream?signature_cipher={}&player_js_id={}&video_id={}", hostname.unwrap_or(""), encode(&stream), &player_js_id, &id))
+                Some(format!("{}/decipher_stream?signature_cipher={}&player_js_id={}&video_id={}&local={}", hostname.unwrap_or(""), encode(&stream), &player_js_id, &id, &local))
               }).collect::<Vec::<Option<String>>>()
             };
             let formats_len = formats.len();
@@ -221,10 +226,32 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
               json["streamingData"]["adaptiveFormats"][k]["url"] = json!(deciphered_streams[i]);
               i = i + 1;
             }
+          } else if local && app_settings.enable_local_streaming {
+            let formats_len = formats.len();
+            let adaptive_len = adaptive_formats.len();
+            let mut i = 0;
+            for k in 0..formats_len {
+              let url = json["streamingData"]["formats"][k]["url"].as_str().unwrap_or("");
+              let url_parts = url.split("googlevideo.com").collect::<Vec::<&str>>();
+              let google_hostname = format!("{}googlevideo.com", url_parts[0]);
+              let url_after = url_parts[1];
+              let url = format!("{}{}&host={}&local=true", hostname.unwrap_or(""), url_after, encode(&google_hostname));
+              json["streamingData"]["formats"][k]["url"] = json!(url);
+              i = i + 1;
+            }
+            for k in 0..adaptive_len {
+              let url = json["streamingData"]["adaptiveFormats"][k]["url"].as_str().unwrap_or("");
+              let url_parts = url.split("googlevideo.com").collect::<Vec::<&str>>();
+              let google_hostname = format!("{}googlevideo.com", url_parts[0]);
+              let url_after = url_parts[1];
+              let url = format!("{}{}&host={}&local=true", hostname.unwrap_or(""), url_after, encode(&google_hostname));
+              json["streamingData"]["adaptiveFormats"][k]["url"] = json!(url);
+              i = i + 1;
+            }
           }
           json["timestamp"] = Utc::now().timestamp().into();
           if app_settings.cache_requests {
-            db.insert_json("player", &format!("{}-{}", id, lang), &json).await;
+            db.insert_json("player", &format!("{}-{}-{}", id, lang, local), &json).await;
           }
           Ok(json.clone())
         },
@@ -286,6 +313,7 @@ fn sort_to_inv_schema(json: Map<String, Value>, fields: &Vec::<String>) -> Map<S
 #[derive(Deserialize)]
 pub struct VideoEndpointQueryParams {
   hl: Option<String>,
+  local: Option<bool>,
   fields: Option<String>,
   pretty: Option<i32>
 }
@@ -305,6 +333,7 @@ pub struct CommentUrl {
 
 #[get("/api/v1/videos/{video_id}")]
 pub async fn video_endpoint(req: HttpRequest, path: Path<String>, query: Query<VideoEndpointQueryParams>, app_settings: Data<AppSettings>) -> impl Responder {
+  let local = query.local.unwrap_or(false);
   let connection_info = req.connection_info();
   let uri = String::from(format!("{}://{}", connection_info.scheme(), connection_info.host()));
   let video_id = path.into_inner();
@@ -323,7 +352,7 @@ pub async fn video_endpoint(req: HttpRequest, path: Path<String>, query: Query<V
     },
     None => DEFAULT_FIELDS.into_iter().map(|string| String::from(string)).collect::<Vec::<String>>()
   };
-  let player_res = match fetch_player_with_cache(&video_id, &lang, &app_settings, Some(&uri)).await {
+  let player_res = match fetch_player_with_cache(&video_id, &lang, &app_settings, local, Some(&uri)).await {
     Ok(player_res) => player_res,
     Err(fetch_player_error) => {
       let status_code = match fetch_player_error {
@@ -459,7 +488,7 @@ pub async fn latest_version(params: Query<LatestVersionQueryParams>, app_setting
   let itag = i32::from_str(&params.itag).unwrap_or(0); 
   let lang = params.hl.clone().unwrap_or(String::from("en"));
   let local = &params.local.unwrap_or(false);
-  let player_res = match fetch_player_with_cache(&video_id, &lang, &app_settings, None).await {
+  let player_res = match fetch_player_with_cache(&video_id, &lang, &app_settings, *local, None).await {
     Ok(player_res) => player_res,
     Err(error) => {
       return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Failed to fetch `/player` endpoint\", \"inner_message\": \"{}\" }}", error))
@@ -505,14 +534,76 @@ pub async fn latest_version(params: Query<LatestVersionQueryParams>, app_setting
 }
 
 #[derive(Deserialize)]
+pub struct VideoPlaybackQueryParams {
+  host: String,
+  local: Option<bool>
+}
+
+#[route("/videoplayback", method="GET", method="HEAD")]
+pub async fn videoplayback(req: HttpRequest, mut payload: Payload, params: Query<VideoPlaybackQueryParams>, app_settings: Data<AppSettings>) -> impl Responder {
+  if !app_settings.enable_local_streaming {
+    return HttpResponse::build(StatusCode::from_u16(403).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Local streaming is disabled.\" }}"));
+  }
+  let local = &params.local.unwrap_or(true);
+  let hostname = match decode(&params.host) {
+    Ok(hostname) => hostname,
+    Err(error) => {
+      return HttpResponse::build(StatusCode::from_u16(400).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Failed to decode host parameter.\", \"inner_message\": \"{}\" }}", error));
+    }
+  };
+  let uri = format!("{}{}", hostname, req.uri());
+  if *local {
+    let mut headers = req.get_reqwest_headers();
+    headers.remove("referrer");
+    headers.remove("access-control-allow-origin");
+    headers.remove("connection");
+    headers.insert("access-control-allow-origin", "*".try_into().unwrap());
+    // ✏ TODO Add proper local streaming
+    // this doesn't work very well except for playing videos front to back with no seeking
+    /* if headers.contains_key("range") {
+      let range = headers.get("range").unwrap().to_str().unwrap();
+      println!("{}", range);
+      uri = format!("{}&range={}", uri, &range.split("=").collect::<Vec<&str>>()[1]);
+      println!("{}", uri);
+      headers.remove("range");
+    } */
+    let (tx, rx) = mpsc::unbounded_channel();
+  
+    actix_web::rt::spawn(async move {
+      while let Some(chunk) = payload.next().await {
+        tx.send(chunk).unwrap();
+      }
+    });
+
+    let client = Client::new();
+    let forwarded_req = client
+        .request(req.method().into(), uri)
+        .body(reqwest::Body::wrap_stream(UnboundedReceiverStream::new(rx)));
+  
+    let res = forwarded_req
+        .send()
+        .await
+        .unwrap();
+  
+    let mut client_resp = HttpResponse::build(res.status());
+    res.headers().add_headers_to_builder(client_resp).streaming(res.bytes_stream())
+  } else {
+    HttpResponse::build(StatusCode::from_u16(302).unwrap()).content_type("application/json").insert_header(("Location", uri)).body("")
+  }
+}
+
+#[derive(Deserialize)]
 pub struct DecipherStreamQueryParams {
   signature_cipher: String,
   player_js_id: String,
-  video_id: String
+  video_id: String,
+  local: Option<bool>
 }
 
 #[get("/decipher_stream")]
 pub async fn decipher_stream(params: Query<DecipherStreamQueryParams>, app_settings: Data<AppSettings>) -> impl Responder {
+  let local = params.local.unwrap_or(false);
+  
   let db = app_settings.get_json_db().await;
   if app_settings.decipher_streams {
     let signature_cipher = match decode(&params.signature_cipher) {
@@ -543,14 +634,18 @@ pub async fn decipher_stream(params: Query<DecipherStreamQueryParams>, app_setti
           Err(_) => false
         };
         if is_decipher_good {
-          HttpResponse::build(StatusCode::from_u16(302).unwrap()).insert_header(("Location", deciphered_url)).content_type("application/json").body("")
+          let url_parts = deciphered_url.split("googlevideo.com").collect::<Vec::<&str>>();
+          let google_hostname = format!("{}googlevideo.com", url_parts[0]);
+          let url_after = url_parts[1];
+          let url = format!("{}&host={}&local={}", url_after, encode(&google_hostname), local);
+          HttpResponse::build(StatusCode::from_u16(302).unwrap()).insert_header(("Location",url)).content_type("application/json").body("")
         } else {
-          db.delete("player", &format!("{}-{}", &params.video_id, "en"));
-          HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Deciphering failed due to an unknown reason.\", \"url\": \"{}\" }}", &deciphered_url))
+          db.delete("player", &format!("{}-{}", &params.video_id, "en")).await;
+          HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Deciphering JS ran without fail, but the result was a broken link.\", \"url\": \"{}\" }}", &deciphered_url))
         }
       },
       Err(error) => {
-        db.delete("player", &format!("{}-{}", &params.video_id, "en"));
+        db.delete("player", &format!("{}-{}", &params.video_id, "en")).await;
         HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"{}\" }}", error.replace("\"", "\\\"")))
       }
     }
