@@ -27,7 +27,11 @@ pub struct AppSettings {
   // DEFAULTS: false
   // can be enabled with `--return-innertube`
   pub return_innertube_response: bool,
-  pub decipher_streams: bool, // 📝 UNIMPLEMENTED
+  // Optionally use the android `/player` endpoint to bypass the need to decipher (similar to how invidious works)
+  // DEFAULTS: false
+  // can be enabled with `--use-android-endpoint`
+  pub use_android_endpoint_for_streams: bool,
+  pub decipher_streams: bool,
   // Optionally pre-decipher all streams in every video endpoint response instead of lazily providing a link to `/decipher_stream`
   pub decipher_on_video_endpoint: bool,
   pub enable_local_streaming: bool, // 📝 UNIMPLEMENTED
@@ -78,6 +82,7 @@ impl AppSettings {
       sort_to_inv_schema: !args.contains(&String::from("--no-sort")),
       retain_null_keys: !args.contains(&String::from("--hide-null-fields")),
       return_innertube_response: args.contains(&String::from("--return-innertube")),
+      use_android_endpoint_for_streams: args.contains(&String::from("--use-android-endpoint")),
       decipher_streams: args.contains(&String::from("--decipher-streams")) || enabled_all_features,
       decipher_on_video_endpoint: args.contains(&String::from("--pre-decipher-streams")),
       enable_local_streaming: args.contains(&String::from("--enable-local-streaming")) || enabled_all_features,

@@ -143,8 +143,12 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
           return Err(error);
         }
       };
-    
-      match fetch_player_with_sig_timestamp(id, signature_timestamp, &ClientContext::default_web(), Some(lang)).await {
+      let context = if app_settings.use_android_endpoint_for_streams {
+        ClientContext::default_android()
+      } else {
+        ClientContext::default_web()
+      };
+      match fetch_player_with_sig_timestamp(id, signature_timestamp, &context, Some(lang)).await {
         Ok(player) => {
           let mut json = match from_str::<Value>(&player) {
             Ok(json) => json,
