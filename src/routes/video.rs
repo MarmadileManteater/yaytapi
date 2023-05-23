@@ -67,12 +67,13 @@ async fn fetch_player_js_with_cache(db: &DbWrapper, app_settings: &AppSettings, 
       None => {
         db.delete("player", "player.js-id").await;
         db.insert_json("player", "player.js-id", &json!(player_js_id)).await;
+        db.delete("player", &format!("player.js-{}", player_js_id)).await;
+        db.insert_json("player", &format!("player.js-{}", player_js_id), &json!(player_js_response)).await;
+        db.delete("player", "signature_timestamp").await;
+        db.insert_json("player", "signature_timestamp", &json!(signature_timestamp)).await;
       }
     };
-    db.delete("player", &format!("player.js-{}", player_js_id)).await;
-    db.delete("player", "signature_timestamp").await;
-    db.insert_json("player", &format!("player.js-{}", player_js_id), &json!(player_js_response)).await;
-    db.insert_json("player", "signature_timestamp", &json!(signature_timestamp)).await;
+
     Ok((player_js_response, signature_timestamp, player_js_id))
   } else {
     let Some(player_js_response) = get_previous_data("player", &format!("player.js-{}", player_js_id), &db, app_settings).await else { todo!() };
@@ -206,7 +207,7 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
               }
             } else {
               streams.into_iter().map(|stream| {
-                Some(format!("{}/decipher_stream?signature_cipher={}&player_js_id={}", hostname.unwrap_or(""), encode(&stream), &player_js_id))
+                Some(format!("{}/decipher_stream?signature_cipher={}&player_js_id={}&video_id={}", hostname.unwrap_or(""), encode(&stream), &player_js_id, &id))
               }).collect::<Vec::<Option<String>>>()
             };
             let formats_len = formats.len();
@@ -506,11 +507,13 @@ pub async fn latest_version(params: Query<LatestVersionQueryParams>, app_setting
 #[derive(Deserialize)]
 pub struct DecipherStreamQueryParams {
   signature_cipher: String,
-  player_js_id: String
+  player_js_id: String,
+  video_id: String
 }
 
 #[get("/decipher_stream")]
 pub async fn decipher_stream(params: Query<DecipherStreamQueryParams>, app_settings: Data<AppSettings>) -> impl Responder {
+  let db = app_settings.get_json_db().await;
   if app_settings.decipher_streams {
     let signature_cipher = match decode(&params.signature_cipher) {
       Ok(decoded) => decoded,
@@ -534,9 +537,20 @@ pub async fn decipher_stream(params: Query<DecipherStreamQueryParams>, app_setti
     };
     match ciphers::decipher_stream(&signature_cipher, &player_js_res) {
       Ok(deciphered_url) => {
-        HttpResponse::build(StatusCode::from_u16(302).unwrap()).insert_header(("Location", deciphered_url)).content_type("application/json").body("")
+        let client = Client::new();
+        let is_decipher_good = match client.head(&deciphered_url).send().await {
+          Ok(response) => response.status() != 403,
+          Err(_) => false
+        };
+        if is_decipher_good {
+          HttpResponse::build(StatusCode::from_u16(302).unwrap()).insert_header(("Location", deciphered_url)).content_type("application/json").body("")
+        } else {
+          db.delete("player", &format!("{}-{}", &params.video_id, "en"));
+          HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Deciphering failed due to an unknown reason.\", \"url\": \"{}\" }}", &deciphered_url))
+        }
       },
       Err(error) => {
+        db.delete("player", &format!("{}-{}", &params.video_id, "en"));
         HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"{}\" }}", error.replace("\"", "\\\"")))
       }
     }
