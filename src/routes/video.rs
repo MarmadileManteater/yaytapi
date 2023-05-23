@@ -19,10 +19,10 @@ use crate::settings::AppSettings;
 use crate::helpers::get_previous_data;
 use crate::helpers::DbWrapper;
 
-async fn fetch_player_js_with_cache(db: &DbWrapper, app_settings: &AppSettings, player_js_id: Option<String>) -> Result<(String, i32, String), FetchPlayerError> {
-  let player_js_id = match player_js_id {
-    Some (player_js_id) => player_js_id,
-    None => match get_player_js_id().await {
+async fn fetch_player_js_with_cache(db: &DbWrapper, app_settings: &AppSettings, player_js_id_option: Option<String>) -> Result<(String, i32, String), FetchPlayerError> {
+  let player_js_id = match &player_js_id_option {
+    Some (player_js_id) => String::from(player_js_id),
+    None => String::from(match get_player_js_id().await {
       Ok(player_js_id) => player_js_id,
       Err(error) => {
         match error {
@@ -30,18 +30,23 @@ async fn fetch_player_js_with_cache(db: &DbWrapper, app_settings: &AppSettings, 
           None => return Err(FetchPlayerError::PlayerJsIdNotFound)
         }
       }
+    })
+  };
+  let need_new_player_js = match &player_js_id_option {
+    Some(_) => true,
+    None => {
+      let previous_js_id = get_previous_data("player", "player.js-id", &db, app_settings).await;
+      match previous_js_id {
+        Some(previous_js_id_str) => {
+          previous_js_id_str.as_str().unwrap_or("") != player_js_id
+        },
+        None => {
+          true
+        }
+      }
     }
   };
 
-  let previous_js_id = get_previous_data("player", "player.js-id", &db, app_settings).await;
-  let need_new_player_js = match previous_js_id {
-    Some(previous_js_id_str) => {
-      previous_js_id_str.as_str().unwrap_or("") != player_js_id
-    },
-    None => {
-      true
-    }
-  };
   
   if need_new_player_js {
     let player_js_response = match get_player_response(&player_js_id).await {
@@ -56,15 +61,21 @@ async fn fetch_player_js_with_cache(db: &DbWrapper, app_settings: &AppSettings, 
         return Err(FetchPlayerError::SignatureTimestampNotFound(error));
       }
     };
-    db.delete("player", "player.js-id").await;
-    db.delete("player", "player.js").await;
+
+    match player_js_id_option {
+      Some(_) => {},
+      None => {
+        db.delete("player", "player.js-id").await;
+        db.insert_json("player", "player.js-id", &json!(player_js_id)).await;
+      }
+    };
+    db.delete("player", &format!("player.js-{}", player_js_id)).await;
     db.delete("player", "signature_timestamp").await;
-    db.insert_json("player", "player.js-id", &json!(player_js_id)).await;
-    db.insert_json("player", "player.js", &json!(player_js_response)).await;
+    db.insert_json("player", &format!("player.js-{}", player_js_id), &json!(player_js_response)).await;
     db.insert_json("player", "signature_timestamp", &json!(signature_timestamp)).await;
     Ok((player_js_response, signature_timestamp, player_js_id))
   } else {
-    let Some(player_js_response) = get_previous_data("player", "player.js", &db, app_settings).await else { todo!() };
+    let Some(player_js_response) = get_previous_data("player", &format!("player.js-{}", player_js_id), &db, app_settings).await else { todo!() };
     let Some(signature_timestamp) = get_previous_data("player", "signature_timestamp", &db, app_settings).await else { todo!() };
     Ok((String::from(player_js_response.as_str().unwrap()), signature_timestamp.as_i64().unwrap() as i32, player_js_id))
   }
@@ -176,7 +187,6 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
             false
           };
           if need_to_decipher {
-            
             for k in 0..formats.len() {
               streams.push(String::from(formats[k]["signatureCipher"].as_str().unwrap()));
             }
