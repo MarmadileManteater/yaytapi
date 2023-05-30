@@ -527,7 +527,12 @@ pub async fn latest_version(req: HttpRequest, params: Query<LatestVersionQueryPa
   }
   match format {
     Some(format_match) => {
-      let Some(url) = format_match.url else { todo!() };
+      let url = match format_match.url {
+        Some(url) => url,
+        None => {
+          return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"A stream was found matching the given itag: {}, but there was an error returning the url.\" }}", itag));
+        }
+      };
       HttpResponse::build(StatusCode::from_u16(302).unwrap()).insert_header(("Location", url)).body("")
     },
     None => {
