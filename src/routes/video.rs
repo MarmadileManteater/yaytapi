@@ -593,7 +593,7 @@ pub async fn videoplayback(req: HttpRequest, mut payload: Payload, params: Query
         .await
         .unwrap();
   
-    let mut client_resp = HttpResponse::build(res.status());
+    let client_resp = HttpResponse::build(res.status());
     res.headers().add_headers_to_builder(client_resp).streaming(res.bytes_stream())
   } else {
     HttpResponse::build(StatusCode::from_u16(302).unwrap()).content_type("application/json").insert_header(("Location", uri)).body("{}")
@@ -642,7 +642,7 @@ pub async fn decipher_stream(params: Query<DecipherStreamQueryParams>, app_setti
         };
         if is_decipher_good {
           let url_parts = deciphered_url.split("googlevideo.com").collect::<Vec::<&str>>();
-          let google_hostname = format!("{}googlevideo.com", url_parts[0]).replace("https://", "");;
+          let google_hostname = format!("{}googlevideo.com", url_parts[0]).replace("https://", "");
           let url_after = url_parts[1];
           let url = format!("{}&host={}&local={}", url_after, encode(&google_hostname), local);
           HttpResponse::build(StatusCode::from_u16(302).unwrap()).insert_header(("Location",url)).content_type("application/json").body("")

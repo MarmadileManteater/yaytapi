@@ -63,6 +63,7 @@ pub struct DbWrapper {
   pub preference: DbType
 }
 
+// todo✏ figure out better solution for concurency
 impl DbWrapper {
   pub fn unqlite(unqlite: UnQLite) -> DbWrapper {
     DbWrapper {
