@@ -12,6 +12,7 @@ pub enum DbType {
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct AppSettings {
+  pub publish_settings_inside_stats: bool,
   // --print-config
   pub print_config: bool, 
   // always enabled unless explicitly disabled by
@@ -88,6 +89,7 @@ impl AppSettings {
       }
     };
     AppSettings {
+      publish_settings_inside_stats: args.contains(&String::from("--publish-settings")),
       print_config: args.contains(&String::from("--print-config")),
       enable_actix_web_logger: !args.contains(&String::from("--no-logs")),
       sort_to_inv_schema: !args.contains(&String::from("--no-sort")),
