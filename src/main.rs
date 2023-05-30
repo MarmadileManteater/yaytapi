@@ -7,6 +7,7 @@ use settings::AppSettings;
 use actix_web::{HttpServer, App, web::Data};
 use std::io::Result;
 use actix_web::middleware::Logger;
+use actix_cors::Cors;
 use env_logger::{Env, init_from_env};
 
 #[tokio::main]
@@ -26,6 +27,7 @@ async fn main() -> Result<()> {
     init_from_env(Env::default().default_filter_or("info"));
   }
   HttpServer::new(move || {
+    let enable_cors = app_settings.enable_cors;
     let app_settings = (&app_settings).clone();
     App::new()
       .wrap(Logger::default())
@@ -36,8 +38,16 @@ async fn main() -> Result<()> {
       .service(routes::video::decipher_stream)// -> /decipher_stream
       .service(routes::video::video_endpoint)// -> /api/v1/videos/{video_id}
       .service(routes::video::video_thumbnail_proxy)// -> /vi/{video_id}/{file_name}.jpg
+      .service(routes::comment::comment_endpoint)// -> /api/v1/comments/{video_id}
       .service(routes::channel::author_thumbnail_proxy)// -> /ggpht/{author_thumbnail_url:.*}
+      .wrap(
+        if enable_cors {
+          Cors::permissive()
+        } else {
+          Cors::default()
+        }
+      )
   }).bind(format!("{}:{}", ip_address, port))?
-    .run()
-    .await
+  .run()
+  .await
 }

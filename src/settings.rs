@@ -12,8 +12,10 @@ pub enum DbType {
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct AppSettings {
+  // --print-config
   pub print_config: bool, 
-  //
+  // always enabled unless explicitly disabled by
+  // --no-logs
   pub enable_actix_web_logger: bool,
   // Sorts the output of yayti to the order of invidious
   // DEFAULTS: true
@@ -42,6 +44,9 @@ pub struct AppSettings {
   pub ip_address: String,
   // can be set with `--port=8080`
   pub port: String,
+  // the public facing URL for the server (what will be returned in `formatStream` urls and the like)
+  // can be set with `--public-url=https://yaytapi.marmadilemanteater.dev`
+  pub pub_url: Option<String>,
   pub db_connection_string: Option<String>,
   pub db_name: String,
   pub db_type: DbType
@@ -49,7 +54,6 @@ pub struct AppSettings {
 
 impl AppSettings {
   pub fn from_cli_args(args: &Vec<String>) -> AppSettings {
-    let enabled_all_features = args.contains(&String::from("--all-on"));
     let args_string = args.join(" ");
     let Ok(ip_re) = Regex::new(r#"--ip=([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)"#) else { todo!() };
     let ip_address = match ip_re.captures(&args_string) {
@@ -68,6 +72,13 @@ impl AppSettings {
       },
       None => (DbType::UnQLite, None)
     };
+    let Ok(public_url_re) = Regex::new(r#"--public-url=([^ ]+)"#) else { todo!() };
+    let public_url = match public_url_re.captures(&args_string) {
+      Some(public_url_re_captures) => {
+        Some(String::from(public_url_re_captures.get(1).unwrap().as_str()))
+      },
+      None => None
+    };
     let Ok(db_name_re) = Regex::new(r#"--db-name=([^ ]+)"#) else { todo!() };
     let db_name = match db_name_re.captures(&args_string) {
       Some(db_name_captures) => db_name_captures.get(1).unwrap().as_str(),
@@ -83,14 +94,15 @@ impl AppSettings {
       retain_null_keys: !args.contains(&String::from("--hide-null-fields")),
       return_innertube_response: args.contains(&String::from("--return-innertube")),
       use_android_endpoint_for_streams: args.contains(&String::from("--use-android-endpoint")),
-      decipher_streams: args.contains(&String::from("--decipher-streams")) || enabled_all_features,
+      decipher_streams: args.contains(&String::from("--decipher-streams")),
       decipher_on_video_endpoint: args.contains(&String::from("--pre-decipher-streams")),
-      enable_local_streaming: args.contains(&String::from("--enable-local-streaming")) || enabled_all_features,
-      enable_cors: args.contains(&String::from("--enable-cors")) || enabled_all_features,
+      enable_local_streaming: args.contains(&String::from("--enable-local-streaming")),
+      enable_cors: args.contains(&String::from("--enable-cors")),
       cache_timeout: 60,// 1 minute
-      cache_requests: !args.contains(&String::from("--no-cache")) && true,
+      cache_requests: !args.contains(&String::from("--no-cache")),
       ip_address: String::from(ip_address),
       port: String::from(port),
+      pub_url: public_url,
       db_connection_string: db_connection_string,
       db_name: String::from(db_name),
       db_type: db_type
