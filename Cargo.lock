@@ -2256,6 +2256,7 @@ dependencies = [
 [[package]]
 name = "shared"
 version = "0.1.0"
+source = "git+https://github.com/MarmadileManteater/yayti?branch=0.2.1#d180c9e0f2145071cf8b6a830e6ed91f62821f2b"
 dependencies = [
  "serde",
  "serde_json",
@@ -3156,8 +3157,8 @@ dependencies = [
 
 [[package]]
 name = "yayti"
-version = "0.2.0"
-source = "git+https://github.com/MarmadileManteater/yayti?branch=0.2.0#851ec415a5efc64b8a20abf0f6c575e078afaaac"
+version = "0.2.1"
+source = "git+https://github.com/MarmadileManteater/yayti?branch=0.2.1#d180c9e0f2145071cf8b6a830e6ed91f62821f2b"
 dependencies = [
  "base64 0.21.0",
  "boa_engine",
