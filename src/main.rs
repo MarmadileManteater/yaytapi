@@ -38,7 +38,6 @@ async fn main() -> Result<()> {
       .service(routes::video::decipher_stream)// -> /decipher_stream
       .service(routes::video::video_endpoint)// -> /api/v1/videos/{video_id}
       .service(routes::video::video_thumbnail_proxy)// -> /vi/{video_id}/{file_name}.jpg
-      .service(routes::comment::comment_endpoint)// -> /api/v1/comments/{video_id}
       .service(routes::channel::author_thumbnail_proxy)// -> /ggpht/{author_thumbnail_url:.*}
       .wrap(
         if enable_cors {

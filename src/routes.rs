@@ -1,6 +1,5 @@
 
 pub mod video;
-pub mod comment;
 pub mod channel;
 use serde::{Serialize, Deserialize};
 use serde_json::{to_string_pretty, to_string};
