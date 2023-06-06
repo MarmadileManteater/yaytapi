@@ -231,22 +231,24 @@ async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSetting
             let formats_len = formats.len();
             let adaptive_len = adaptive_formats.len();
             let mut i = 0;
-            for k in 0..formats_len {
-              let url = json["streamingData"]["formats"][k]["url"].as_str().unwrap_or("");
+            fn get_stream_url(url: &str, hostname: &str, is_local: bool) -> String{
               let url_parts = url.split("googlevideo.com").collect::<Vec::<&str>>();
               let google_hostname = format!("{}googlevideo.com", url_parts[0]).replace("https://", "");
               let url_after = url_parts[1];
-              let url = format!("{}{}&host={}&local={}", hostname, url_after, encode(&google_hostname), local && app_settings.enable_local_streaming);
-              json["streamingData"]["formats"][k]["url"] = json!(url);
+              if is_local {
+                format!("{}{}&host={}", hostname, url_after, encode(&google_hostname))
+              } else {// iv always includes host param in response
+                format!("https://{}{}&host={}", google_hostname, url_after, encode(&google_hostname))
+              }
+            }
+            for k in 0..formats_len {
+              let url = json["streamingData"]["formats"][k]["url"].as_str().unwrap_or("");
+              json["streamingData"]["formats"][k]["url"] = json!(get_stream_url(url, &hostname, local && app_settings.enable_local_streaming));
               i = i + 1;
             }
             for k in 0..adaptive_len {
               let url = json["streamingData"]["adaptiveFormats"][k]["url"].as_str().unwrap_or("");
-              let url_parts = url.split("googlevideo.com").collect::<Vec::<&str>>();
-              let google_hostname = format!("{}googlevideo.com", url_parts[0]).replace("https://", "");
-              let url_after = url_parts[1];
-              let url = format!("{}{}&host={}&local={}", hostname, url_after, encode(&google_hostname), local && app_settings.enable_local_streaming);
-              json["streamingData"]["adaptiveFormats"][k]["url"] = json!(url);
+              json["streamingData"]["adaptiveFormats"][k]["url"] = json!(get_stream_url(url, &hostname, local && app_settings.enable_local_streaming));
               i = i + 1;
             }
           }
