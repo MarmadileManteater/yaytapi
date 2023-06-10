@@ -26,6 +26,7 @@ async fn main() -> Result<()> {
   if app_settings.enable_actix_web_logger {
     init_from_env(Env::default().default_filter_or("info"));
   }
+  let workers = app_settings.num_of_workers;
   HttpServer::new(move || {
     let enable_cors = app_settings.enable_cors;
     let app_settings = (&app_settings).clone();
@@ -47,6 +48,7 @@ async fn main() -> Result<()> {
         }
       )
   }).bind(format!("{}:{}", ip_address, port))?
+  .workers(workers)
   .run()
   .await
 }

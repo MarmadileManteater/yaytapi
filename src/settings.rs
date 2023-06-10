@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use regex::Regex;
 use unqlite::UnQLite;
 use mongodb::{Client, options::ClientOptions};
+use std::str::FromStr;
 use crate::helpers::DbWrapper;
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -50,7 +51,9 @@ pub struct AppSettings {
   pub pub_url: Option<String>,
   pub db_connection_string: Option<String>,
   pub db_name: String,
-  pub db_type: DbType
+  pub db_type: DbType,
+  // can be set with `--workers=[0-9]+`
+  pub num_of_workers: usize
 }
 
 impl AppSettings {
@@ -88,6 +91,11 @@ impl AppSettings {
         DbType::MongoDb => "local"
       }
     };
+    let Ok(num_of_workers_re) = Regex::new(r#"--workers=([0-9]+)"#) else { todo!() };
+    let num_of_workers = match num_of_workers_re.captures(&args_string) {
+      Some(db_name_captures) => i32::from_str(db_name_captures.get(1).unwrap().as_str()).unwrap_or(1) as usize,
+      None => 1
+    };
     AppSettings {
       publish_settings_inside_stats: args.contains(&String::from("--publish-settings")),
       print_config: args.contains(&String::from("--print-config")),
@@ -107,7 +115,8 @@ impl AppSettings {
       pub_url: public_url,
       db_connection_string: db_connection_string,
       db_name: String::from(db_name),
-      db_type: db_type
+      db_type: db_type,
+      num_of_workers: num_of_workers
     }
   }
   pub async fn get_json_db(&self) -> DbWrapper {
