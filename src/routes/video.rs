@@ -377,36 +377,30 @@ pub async fn video_endpoint(req: HttpRequest, path: Path<String>, query: Query<V
     innertube.next = Some(next_res);
   }
   json = filter_out_everything_but_fields(json, &fields);
-  // figure out what thumbnail sizes exist from the streams data we know about
-  let mut max_size = 680;
-  if fields.contains(&String::from("formatStreams")) && json.contains_key("formatStreams") {
-    match json["formatStreams"].as_array() {
-      Some(streams) => {
-        for stream in streams {
-          let width = i32::from_str(stream["size"].as_str().unwrap_or("0").split("x").collect::<Vec::<&str>>()[0]).unwrap_or(0);
-          if max_size < width {
-            max_size = width;
-          }
-        }
-      },
-      None => {}
+  // 🔍 figure out what thumbnail sizes exist
+  let client = Client::new();
+  let has_maxres = match client.head(format!("https://i.ytimg.com/vi/{}/maxresdefault.jpg", video_id)).send().await {
+    Ok(res) => {
+      res.status() != 404
+    },
+    Err(_) => false
+  };
+  let has_sd = has_maxres || match client.head(format!("https://i.ytimg.com/vi/{}/sddefault.jpg", video_id)).send().await {
+    Ok(res) => {
+      res.status() != 404
+    },
+    Err(_) => false
+  };
+  let max_size = if has_maxres {
+    1920
+  } else {
+    if has_sd {
+      640
+    } else {
+      480
     }
-  }
-  if fields.contains(&String::from("adaptiveFormats")) && json.contains_key("adaptiveFormats") {
-    match json["adaptiveFormats"].as_array() {
-      Some(streams) => {
-        for stream in streams {
-          let width = i32::from_str(stream["size"].as_str().unwrap_or("0").split("x").collect::<Vec::<&str>>()[0]).unwrap_or(0);
-          if max_size < width {
-            max_size = width;
-          }
-        }
-      },
-      None => {}
-    }
-  }
+  };
   json.insert(String::from("captions"), json!([]));
-  // video thumbnails can be generated without making a request
   if !json.contains_key("videoThumbnails") {
     json.insert(String::from("videoThumbnails"), json!(generate_yt_video_thumbnails_within_max_size(&video_id, max_size)));
   }
