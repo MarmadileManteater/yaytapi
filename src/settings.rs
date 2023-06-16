@@ -53,7 +53,17 @@ pub struct AppSettings {
   pub db_name: String,
   pub db_type: DbType,
   // can be set with `--workers=[0-9]+`
-  pub num_of_workers: usize
+  pub num_of_workers: usize,
+  // a directory that contains playlist definitions in json format
+  // each playlist file must contain an array of video urls or video ids
+  // it will sus out the video ids from any valid yt, iv, or yaytapi video link
+  // ex: 
+  // [
+  //  "https://youtube.com/watch?v=PxeFyxrUWt0",
+  //  "khBwYuNGU6U"
+  // ]
+  // can be set with `--playlists-path=/path/to/playlists/`
+  pub playlists_path: Option<String>
 }
 
 impl AppSettings {
@@ -96,6 +106,11 @@ impl AppSettings {
       Some(db_name_captures) => i32::from_str(db_name_captures.get(1).unwrap().as_str()).unwrap_or(1) as usize,
       None => 1
     };
+    let Ok(playlists_dir_re) = Regex::new(r#"--playlists-path=[^ ]+"#) else { todo!() };
+    let playlist_dir = match playlists_dir_re.captures(&args_string) {
+      Some(playlist_dir_captures) => Some(String::from(playlist_dir_captures.get(1).unwrap().as_str())),
+      None => None
+    };
     AppSettings {
       publish_settings_inside_stats: args.contains(&String::from("--publish-settings")),
       print_config: args.contains(&String::from("--print-config")),
@@ -116,7 +131,8 @@ impl AppSettings {
       db_connection_string: db_connection_string,
       db_name: String::from(db_name),
       db_type: db_type,
-      num_of_workers: num_of_workers
+      num_of_workers: num_of_workers,
+      playlists_path: playlist_dir
     }
   }
   pub async fn get_json_db(&self) -> DbWrapper {
