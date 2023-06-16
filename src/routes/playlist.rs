@@ -18,9 +18,10 @@ pub struct CommentEndpointQueryParams {
 #[get("/api/v1/playlists/{playlist_id}")]
 pub async fn playlist_endpoint(path: Path<String>, query: Query<CommentEndpointQueryParams>, app_settings: Data<AppSettings>) -> impl Responder {
   let playlist_id = path.into_inner();
-  let Ok(playlist) = fetch_playlist(&playlist_id, &ClientContext::default_web(), query.hl.as_deref(), None).await else { todo!() };
+  let hl = query.hl.as_deref();
+  let Ok(playlist) = fetch_playlist(&playlist_id, &ClientContext::default_web(), hl, None).await else { todo!() };
   let Ok(playlist_value) = from_str::<Value>(&playlist) else { todo!() };
-  let playlist_result = parse(&playlist_value);
+  let playlist_result = parse(&playlist_value, &hl.unwrap_or("en"));
   let mut map = playlist_result.into_inv();
   if app_settings.return_innertube_response {
     map.insert(String::from("innertube"), playlist_value);
