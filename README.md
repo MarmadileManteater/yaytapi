@@ -7,7 +7,7 @@ This uses [yayti](https://github.com/MarmadileManteater/yayti) for extraction an
 
 ## ❗ Intention
 
-This is not meant to be a replacement for Invidious or the Invidious API. The primary intention of this project is to be a yt extractor that you can run locally along-side existing applications which already use Invidious _(such as FreeTube)_. 🤔 I don't know if I would recommend running this publicly. 🤷‍♀️
+This is not meant to be a replacement for Invidious or the Invidious API. The primary intention of this project is to be a yt extractor that you can run locally along-side existing applications which already use Invidious _(such as FreeTube)_. 🤔 I don't know if I would recommend running this publicly. 🤷‍♀
 
 ## 🛠 Arguments
 - `--use-android-endpoint` 
