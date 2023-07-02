@@ -40,7 +40,7 @@ pub struct AppSettings {
   pub decipher_on_video_endpoint: bool,
   pub enable_local_streaming: bool, // 📝 UNIMPLEMENTED
   pub enable_cors: bool, // 📝 UNIMPLEMENTED
-  pub cache_timeout: i32,
+  pub cache_timeout: u64,
   pub cache_requests: bool,
   // can be set with `--ip-address=127.0.0.1`
   pub ip_address: String,

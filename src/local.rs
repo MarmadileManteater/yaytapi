@@ -5,6 +5,7 @@ use yayti::{parsers::web::playlist::{Playlist,PlaylistVideo}, helpers::AuthorThu
 use crate::{routes::video::fetch_player_with_cache, settings::AppSettings};
 // converts a local playlist to invidious format
 pub async fn local_playlist_to_iv(title: &str, playlist_json: &Value, app_settings: &AppSettings) -> Option<Playlist> {
+  let uri = app_settings.pub_url.clone().unwrap_or(format!("http://{}:{}", app_settings.ip_address, app_settings.port));
   match playlist_json.as_array() {
     Some(items) => {
       if items.len() > 0 {
@@ -37,7 +38,10 @@ pub async fn local_playlist_to_iv(title: &str, playlist_json: &Value, app_settin
                   } else {
                     link_like_video_id
                   };
-                  let Ok(next_value) = fetch_player_with_cache(video_id, "en", app_settings, false, Some(&app_settings.pub_url.clone().unwrap_or(format!("{}:{}", app_settings.ip_address, app_settings.port)))).await else { return None };
+                  let mut app_settings = app_settings.clone();
+                  app_settings.cache_timeout = u64::MAX;// don't be picky with fetching these videos from cache
+                  // we don't need anything time sensitive like streaming data, just basic info
+                  let Ok(next_value) = fetch_player_with_cache(video_id, "en", &app_settings, false, Some(&app_settings.pub_url.clone().unwrap_or(format!("{}:{}", app_settings.ip_address, app_settings.port)))).await else { return None };
                   i+=1;
                   videos.push(PlaylistVideo {
                     title: yayti::parsers::web::video::get_title(&next_value),
@@ -59,20 +63,21 @@ pub async fn local_playlist_to_iv(title: &str, playlist_json: &Value, app_settin
               videos: Some(videos),
               playlist_thumbnails: None,
               author: Some(String::from("yaytapi")),
-              author_id: None,
+              author_id: Some(String::from("::yaytapi_local::")),// TODO ✏ implement local playlists channel
               author_url: None,
+              // DUMMY DATA freetube will blow up if we don't send this info
               author_thumbnails: Some(vec![AuthorThumbnail {
-                url: String::from("/default_user.jpg"),
-                width: 300,
-                height: 300
+                url: format!("{}/static/default_user.jpg", uri),
+                width: 240,
+                height: 240
               }, AuthorThumbnail {
-                url: String::from("/default_user.jpg"),
-                width: 300,
-                height: 300
+                url: format!("{}/static/default_user.jpg", uri),
+                width: 240,
+                height: 240
               }, AuthorThumbnail {
-                url: String::from("/default_user.jpg"),
-                width: 300,
-                height: 300
+                url: format!("{}/static/default_user.jpg", uri),
+                width: 240,
+                height: 240
               }]),
               description: Some(String::from("")),
               description_html: Some(String::from("")),
