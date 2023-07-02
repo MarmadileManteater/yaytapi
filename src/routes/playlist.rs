@@ -94,7 +94,7 @@ pub async fn playlist_endpoint(path: Path<String>, query: Query<PlaylistEndpoint
                   return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Error generating playlist continuation\" }}"));
                 },
                 FetchPlaylistError::FailedToFetchContinuation(error) => {
-                  return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Unknown error\" }}"));
+                  return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"{}\" }}", error));
                 },
                 FetchPlaylistError::FailedToParseContinuationResponse(error) => {
                   return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Error parsing continuation response to JSON\", \"inner_error\": \"{}\" }}", error));
