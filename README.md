@@ -40,6 +40,7 @@ This uses [yayti](https://github.com/MarmadileManteater/yayti) for extraction an
   - [ ] `/api/v1/channels/search/{author_id}`
 - [ ] `/api/v1/search`
 - [ ] `/api/v1/playlists`
+  - [X] working `page` parameter 
 - [ ] `/api/v1/mixes`
 - [ ] `/api/v1/captions` (unimplemented, but direct links to vtt are passed through)
 - [ ] `/api/v1/storyboards`
