@@ -78,6 +78,14 @@ pub async fn playlist_endpoint(path: Path<String>, query: Query<PlaylistEndpoint
   let playlist_id = path.into_inner();
   let page = query.page.as_deref();
   let hl = query.hl.as_deref();
+  let db = app_settings.get_json_db().await;
+  // if local playlist is available, use it
+  match db.seek_for_json("local-playlist", &playlist_id).await {
+    Some(playlist_data) => {
+      return HttpResponse::build(StatusCode::from_u16(200).unwrap()).content_type("application/json").body(to_string(&playlist_data).unwrap());
+    },
+    None => {}
+  };
   let mut map = Map::<String, Value>::new();
   let playlist_value = match page {
     Some(page) => {

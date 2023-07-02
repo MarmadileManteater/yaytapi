@@ -106,9 +106,11 @@ impl AppSettings {
       Some(db_name_captures) => i32::from_str(db_name_captures.get(1).unwrap().as_str()).unwrap_or(1) as usize,
       None => 1
     };
-    let Ok(playlists_dir_re) = Regex::new(r#"--playlists-path=[^ ]+"#) else { todo!() };
+    let Ok(playlists_dir_re) = Regex::new(r#"--playlists-path=([^ ]+)"#) else { todo!() };
     let playlist_dir = match playlists_dir_re.captures(&args_string) {
-      Some(playlist_dir_captures) => Some(String::from(playlist_dir_captures.get(1).unwrap().as_str())),
+      Some(playlist_dir_captures) => {
+        Some(String::from(playlist_dir_captures.get(1).unwrap().as_str()))
+      },
       None => None
     };
     AppSettings {

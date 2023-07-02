@@ -87,7 +87,7 @@ async fn fetch_player_js_with_cache(db: &DbWrapper, app_settings: &AppSettings, 
   }
 }
 
-async fn fetch_next_with_cache(id: &str, lang: &str, app_settings: &AppSettings) -> Result<Value, reqwest::Error> {
+pub async fn fetch_next_with_cache(id: &str, lang: &str, app_settings: &AppSettings) -> Result<Value, reqwest::Error> {
   // create a connection to the db
   let db = app_settings.get_json_db().await;
   let previous_data = get_previous_data("next", &format!("{}-{}", id, lang), &db, &app_settings).await;
@@ -110,7 +110,6 @@ async fn fetch_next_with_cache(id: &str, lang: &str, app_settings: &AppSettings)
     }
   }
 }
-
 pub enum FetchPlayerError {
   Reqwest(reqwest::Error),
   PlayerJsIdNotFound,
@@ -135,7 +134,7 @@ impl Display for FetchPlayerError {
   }
 }
 
-async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSettings, local: bool, hostname: Option<&str>) -> Result<Value,FetchPlayerError> {
+pub async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSettings, local: bool, hostname: Option<&str>) -> Result<Value,FetchPlayerError> {
   let hostname = app_settings.clone().pub_url.unwrap_or(String::from(hostname.unwrap_or("")));
   let db = app_settings.get_json_db().await;
   let previous_data = get_previous_data("player", &format!("{}-{}-{}", id, lang, local), &db, app_settings).await;
