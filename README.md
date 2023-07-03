@@ -1,3 +1,4 @@
+<img src="https://github.com/MarmadileManteater/yaytapi/blob/playlists/static/icon.png" width="150" />
 
 # yet another yt api
 
@@ -46,24 +47,24 @@ This is not meant to be a replacement for Invidious or the Invidious API. The pr
 
 
 ## 👩‍🏭 progress
-- [X] `/api/v1/stats`
-- [X] `/api/v1/videos` (missing certain aspects such as storyboards, but works for non-edge cases)
-- [ ] `/api/manifest/dash/id/{video_id}`
-- [ ] `/api/v1/comments`
-- [ ] `/api/v1/trending`
-- [ ] `/api/v1/channels`
-  - [ ] `/api/v1/channels/comments/{author_id}`
-  - [ ] `/api/v1/channels/search/{author_id}`
-- [ ] `/api/v1/search`
-- [ ] `/api/v1/playlists`
-  - [X] working `page` parameter 
-  - [X] local playlists can be loaded from `json` files on disk
-- [ ] `/api/v1/mixes`
-- [ ] `/api/v1/captions` (unimplemented, but direct links to vtt are passed through)
-- [ ] `/api/v1/storyboards`
-- [X] `/vi/{video_id}/{file_name}.jpg`
-- [X] `/ggpht/{author_thumbnail}`
-- [X] `/latest_version`
-- [X] `/videoplayback`
-- [X] `/decipher_stream` (not an invidious endpoint, used for deciphering when enabled)
+- ✅ `/api/v1/stats`
+- 🏗 `/api/v1/videos`
+- ❌ `/api/manifest/dash/id/{video_id}`
+- ❌ `/api/v1/comments`
+- ❌ `/api/v1/trending`
+- ❌ `/api/v1/channels`
+  - ❌ `/api/v1/channels/comments/{author_id}`
+  - ❌ `/api/v1/channels/search/{author_id}`
+- ❌ `/api/v1/search`
+- 🏗 `/api/v1/playlists`
+  - ✅ working `page` parameter 
+  - ✅ local playlists can be loaded from `json` files on disk
+- ❌ `/api/v1/mixes`
+- ❌ `/api/v1/captions` (unimplemented, but direct links to vtt are passed through)
+- ❌ `/api/v1/storyboards`
+- ✅ `/vi/{video_id}/{file_name}.jpg`
+- ✅ `/ggpht/{author_thumbnail}`
+- ✅ `/latest_version`
+- ✅ `/videoplayback`
+- ✅ `/decipher_stream` (not an invidious endpoint, used for deciphering when enabled)
 
