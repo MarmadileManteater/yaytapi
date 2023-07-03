@@ -2,10 +2,12 @@
 pub mod video;
 pub mod channel;
 pub mod playlist;
+use std::fs;
+
 use serde::{Serialize, Deserialize};
 use serde_json::{to_string_pretty, to_string};
-use actix_web::web::{Query, Data};
-use actix_web::{HttpResponse, Responder, get};
+use actix_web::web::{Query, Data, Path};
+use actix_web::{HttpResponse, Responder, get, HttpRequest};
 use actix_web::http::StatusCode;
 use crate::settings::AppSettings;
 
@@ -92,3 +94,20 @@ pub async fn server_stats(params: Query<StatsQueryParams>, app_settings: Data<Ap
   HttpResponse::Ok().content_type("application/json").body(json_response)
 }
 
+#[get("/static/{path:.*}")]
+pub async fn static_files(params: Path<String>) -> impl Responder {
+  let path = params.into_inner();
+  let full_path = format!("./static/{}", path);
+  match fs::read(&full_path).map(|bytes| {
+    let content_type = match mime_guess::from_path(&full_path).first() {
+      Some(value) => format!("{}", value),
+      None => String::from("text/html")
+    };
+    HttpResponse::build(StatusCode::from_u16(200).unwrap()).content_type(content_type).body(bytes)
+  }).map_err(|error| {
+    HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"{}\" }}", error))
+  }) {
+    Ok(response) => response,
+    Err(response) => response
+  }
+}

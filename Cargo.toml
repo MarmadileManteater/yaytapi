@@ -22,5 +22,6 @@ tokio-stream = "0.1.14"
 unqlite = "1.5.0"
 yayti = { git = "https://github.com/MarmadileManteater/yayti", branch = "0.2.1", version = "0.2.1", features = ["decipher_streams", "parse_languages_to_published" ] }
 urlencoding = "2.1.2"
+mime_guess = "2.0.4"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

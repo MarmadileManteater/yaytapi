@@ -67,17 +67,17 @@ pub async fn local_playlist_to_iv(title: &str, playlist_json: &Value, app_settin
               author_url: None,
               // DUMMY DATA freetube will blow up if we don't send this info
               author_thumbnails: Some(vec![AuthorThumbnail {
-                url: format!("{}/static/default_user.jpg", uri),
-                width: 240,
-                height: 240
+                url: format!("{}/static/icon.png", uri),
+                width: 400,
+                height: 400
               }, AuthorThumbnail {
-                url: format!("{}/static/default_user.jpg", uri),
-                width: 240,
-                height: 240
+                url: format!("{}/static/icon.png", uri),
+                width: 400,
+                height: 400
               }, AuthorThumbnail {
-                url: format!("{}/static/default_user.jpg", uri),
-                width: 240,
-                height: 240
+                url: format!("{}/static/icon.png", uri),
+                width: 400,
+                height: 400
               }]),
               description: Some(String::from("")),
               description_html: Some(String::from("")),

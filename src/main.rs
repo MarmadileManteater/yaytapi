@@ -102,6 +102,7 @@ async fn main() -> Result<()> {
       .service(routes::video::video_thumbnail_proxy)// -> /vi/{video_id}/{file_name}.jpg
       .service(routes::channel::author_thumbnail_proxy)// -> /ggpht/{author_thumbnail_url:.*}
       .service(routes::playlist::playlist_endpoint)
+      .service(routes::static_files)
       .wrap(
         if enable_cors {
           Cors::permissive()
