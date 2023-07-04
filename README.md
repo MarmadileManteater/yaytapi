@@ -34,7 +34,7 @@ This is not meant to be a replacement for Invidious or the Invidious API. The pr
   - Enables local playlists
   - All `.json` files in the given directory will be loaded and turned into custom local playlists
   - Expected formats:
-    ```json
+  ```json
   [
     "https://www.youtube.com/watch?v=Z8jKbeRbM6Q",
     "https://youtu.be/tV5BnQNzrHc",
