@@ -34,26 +34,26 @@ This is not meant to be a replacement for Invidious or the Invidious API. The pr
   - Enables local playlists
   - All `.json` files in the given directory will be loaded and turned into custom local playlists
   - Expected formats:
-  ```json
-  [
-    "https://www.youtube.com/watch?v=Z8jKbeRbM6Q",
-    "https://youtu.be/tV5BnQNzrHc",
-    "https://redirect.invidious.io/watch?v=TjS6kOuSoq8"
-  ]
-  ```
-  OR
     ```json
-  {
-    "title": "Favourites",
-    "description": "a ⭐ playlist",
-    "videos": [
-      "https://youtu.be/PN-zHSvDc1g",
-      "https://youtu.be/MBNTxw-kLVE",
-      "https://youtu.be/_3rbzlh3JHc"
+    [
+      "https://www.youtube.com/watch?v=Z8jKbeRbM6Q",
+      "https://youtu.be/tV5BnQNzrHc",
+      "https://redirect.invidious.io/watch?v=TjS6kOuSoq8"
     ]
-  }
-
-  ```
+    ```
+    OR
+    
+    ```json
+    {
+      "title": "Favourites",
+      "description": "a ⭐ playlist",
+      "videos": [
+        "https://youtu.be/PN-zHSvDc1g",
+        "https://youtu.be/MBNTxw-kLVE",
+        "https://youtu.be/_3rbzlh3JHc"
+      ]
+    }
+    ```
 - `--ip=127.0.0.1`
 - `--port=8080`
 
