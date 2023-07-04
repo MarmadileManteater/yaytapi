@@ -11,6 +11,10 @@ use std::{io::Result, fs};
 use actix_web::middleware::Logger;
 use actix_cors::Cors;
 use env_logger::{Env, init_from_env};
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 #[tokio::main]
 async fn main() -> Result<()> {
