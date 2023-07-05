@@ -30,11 +30,11 @@ jobs:
           persist-credentials: false
           
       - name: 🏗️ Build
-        if: startsWith(matrix.runtime, "linux-x64") || startsWith(matrix.runtime, "win-x64")
+        if: ${{ startsWith(matrix.runtime, "linux-x64") || startsWith(matrix.runtime, "win-x64") }}
         run: cargo build
       
       - name: 📱 Build
-        if: startsWith(matrix.runtime, "linux-arm")
+        if: ${{ startsWith(matrix.runtime, "linux-arm") }}
         uses: pguyot/arm-runner-action@v2
         with:
           commands: |
