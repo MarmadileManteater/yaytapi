@@ -71,7 +71,8 @@
             }
           }
           apiPath = `${apiPath}?pretty=1`
-          const result = await fetch(apiPath)
+          const result = await Promise.race([fetch(apiPath), new Promise((resolve, reject) => setTimeout(() => { reject({ message: "⏳ Request to API endpoint timed out . . . " }) }, 10 * 1000))]);
+
           const stats = await (result).text()
           if (result.status !== 200) 
             throw stats
