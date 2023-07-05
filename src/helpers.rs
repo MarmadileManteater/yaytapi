@@ -79,6 +79,7 @@ impl DbWrapper {
       preference: DbType::MongoDb
     }
   }
+  // TODO ✏ add better error handling for timeouts per https://docs.rs/mongodb/latest/mongodb/#warning-about-timeouts--cancellation
   pub async fn seek_for_json(&self, collection_name: &str, key: &str) -> Option<Value> {
     match self.preference {
       DbType::UnQLite => {

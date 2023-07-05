@@ -3,7 +3,7 @@ pub mod video;
 pub mod channel;
 pub mod playlist;
 use std::fs;
-
+use serde_json::from_str;
 use serde::{Serialize, Deserialize};
 use serde_json::{to_string_pretty, to_string};
 use actix_web::web::{Query, Data, Path};
@@ -47,9 +47,16 @@ pub struct Stats {
 pub struct StatsQueryParams {
   pretty: Option<i32>
 }
+#[derive(Deserialize)]
+pub struct GitInfo {
+  commit: String,
+  branch: String
+}
 
 #[get("/api/v1/stats")]
 pub async fn server_stats(params: Query<StatsQueryParams>, app_settings: Data<AppSettings>) -> impl Responder {
+  let git_info = from_str::<GitInfo>(include_str!("../git-info.json")).unwrap(); // this is should never be a problem after compilation
+  
   let pretty = params.pretty;
   let is_pretty = match pretty {
     Some(pretty) => pretty == 1,
@@ -59,8 +66,8 @@ pub async fn server_stats(params: Query<StatsQueryParams>, app_settings: Data<Ap
     version: String::from("0.2.0"),
     software: Software {
       name: String::from("yaytapi"),
-      version: String::from("0.2.0"),
-      branch: String::from("development")
+      version: git_info.commit,
+      branch: git_info.branch
     },
     yaytapi_settings: if app_settings.publish_settings_inside_stats { 
       Some(YaytAPIStats {
