@@ -29,12 +29,21 @@ jobs:
         with:
           persist-credentials: false
           
-      - name: 🏗️ Build linux-x64
+      - name: Check OpenSSL version
         if: startsWith(matrix.runtime, 'linux-x64')
-        run: OPENSSL_STATIC=1 OPENSSL_LIB_DIR=/usr/lib64 OPENSSL_INCLUDE_DIR=/usr/include/openssl cargo build
-      
-      - name: Build for win-x64
-        if: startsWith(matrix.runtime, 'win-x64')
+        run: echo "OPENSSL_VERSION=$(openssl version | grep -oP '\d+\.\d+\.\d+[a-z]*' | head -n 1)" >> $GITHUB_OUTPUT
+        id: check_openssl
+        
+      - name: Check OpenSSL version in arm container
+        if: startsWith(matrix.runtime, 'linux-arm')
+        uses: pguyot/arm-runner-action@v2
+        with:
+          commands: |
+            echo "OPENSSL_VERSION=$(openssl version | grep -oP '\d+\.\d+\.\d+[a-z]*' | head -n 1)" >> $GITHUB_OUTPUT
+        id: check_openssl_arm
+
+      - name: 🏗️ Build x64
+        if: startsWith(matrix.runtime, 'linux-x64') || startsWith(matrix.runtime, 'win-x64')
         run: cargo build
       
       - name: 📱 Build for arm
@@ -51,8 +60,22 @@ jobs:
           cp -r static/ dist/
 
       - name: 📦 Publish artifact
+        if: startsWith(matrix.runtime, 'win-x64')
         uses: actions/upload-artifact@v3
         with:
           name: yaytapi-${{ matrix.runtime }}
           path: dist/
 
+      - name: 📦 Publish artifact
+        if: startsWith(matrix.runtime, 'linux-x64')
+        uses: actions/upload-artifact@v3
+        with:
+          name: yaytapi-${{ matrix.runtime }}-${{ check_openssl }}
+          path: dist/
+          
+      - name: 📦 Publish artifact
+        if: startsWith(matrix.runtime, 'linux-arm')
+        uses: actions/upload-artifact@v3
+        with:
+          name: yaytapi-${{ matrix.runtime }}-${{ check_openssl_arm }}
+          path: dist/
