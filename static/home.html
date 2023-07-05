@@ -6,11 +6,12 @@
     <style>
       body {
         font-family: 'Consolas', monospace;
+        height: 100vh;
+        overflow: hidden;
       }
       textarea { 
         width: 100%;
         min-height: 300px;
-        height: 80vh;
         max-width: 100%;
         min-width: 100%;
         border: none;
@@ -35,19 +36,27 @@
         .dark {
           display: initial;
         }
+        a {
+          color: white;
+        }
       }
     </style>
   </head>
   <body>
-    <div style="display: flex; gap: 15px">
-      <div><img src="/static/icon.png" width="200" /></div>
-      <div style="flex: 1">
-        <div id="loading"style="display:flex; display: none" >
+    <div style="display: flex; gap: 15px; height: 100vh; overflow: hidden">
+      <div>
+        <a href="https://github.com/MarmadileManteater/yaytapi" target="_blank" rel="noreferrer" ><img src="/static/icon.png" width="200" /></a>
+        <div style="text-align: center" >
+          <a href="https://github.com/MarmadileManteater/yaytapi"  target="_blank" rel="noreferrer" >view source &raquo;</a>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction: column; flex: 1">
+        <div id="loading" style="display:flex; display: none" >
           <img class="light" src="/static/loading.gif" />
           <img class="dark" src="/static/loading-dark.gif" />
         </div>
         <h1 id="title" style="margin-top: 0; margin-bottom: 10px" ></h1>
-        <textarea id="response" disabled></textarea>
+        <textarea style="flex: 1" id="response" disabled></textarea>
       </div>
     </div>
     <script>
