@@ -3,7 +3,7 @@ use actix_web::{HttpResponse, Responder, get, App};
 use chrono::Utc;
 use serde::{Serialize, Deserialize};
 use actix_web::http::StatusCode;
-use serde_json::{from_str,to_string, Value, Map, json};
+use serde_json::{from_str,to_string, Value, Map, json, to_string_pretty};
 use yayti::helpers::generate_playlist_continuation;
 use yayti::parsers::ClientContext;
 use yayti::extractors::innertube::{fetch_playlist, fetch_continuation};
@@ -15,7 +15,8 @@ use crate::AppSettings;
 #[derive(Serialize, Deserialize)]
 pub struct PlaylistEndpointQueryParams {
   page: Option<String>,
-  hl: Option<String>
+  hl: Option<String>,
+  pretty: Option<u32>
 }
 
 pub enum FetchPlaylistError {
@@ -78,11 +79,21 @@ pub async fn playlist_endpoint(path: Path<String>, query: Query<PlaylistEndpoint
   let playlist_id = path.into_inner();
   let page = query.page.as_deref();
   let hl = query.hl.as_deref();
+  let is_pretty = query.pretty.map(|i| if i != 0 { true } else { false }).unwrap_or(false);
   let db = app_settings.get_json_db().await;
   // if local playlist is available, use it
   match db.seek_for_json("local-playlist", &playlist_id).await {
     Some(playlist_data) => {
-      return HttpResponse::build(StatusCode::from_u16(200).unwrap()).content_type("application/json").body(to_string(&playlist_data).unwrap());
+      match if is_pretty {
+        to_string_pretty(&playlist_data)
+      } else {
+        to_string(&playlist_data)
+      } {
+        Ok(json_response) => return HttpResponse::build(StatusCode::from_u16(200).unwrap()).content_type("application/json").body(json_response),
+        Err(_) => {
+          return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body("{ \"type\": \"error\", \"message\": \"failed to serialize response\" }");
+        }
+      }
     },
     None => {}
   };
@@ -139,5 +150,14 @@ pub async fn playlist_endpoint(path: Path<String>, query: Query<PlaylistEndpoint
   if app_settings.return_innertube_response {
     map.insert(String::from("innertube"), playlist_value);
   }
-  HttpResponse::build(StatusCode::from_u16(200).unwrap()).content_type("application/json").body(to_string(&map).unwrap())
+  match if is_pretty {
+    to_string_pretty(&map)
+  } else {
+    to_string(&map)
+  } {
+    Ok(json_response) => HttpResponse::build(StatusCode::from_u16(200).unwrap()).content_type("application/json").body(json_response),
+    Err(_) => {
+      return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body("{ \"type\": \"error\", \"message\": \"failed to serialize response\" }");
+    }
+  }
 }

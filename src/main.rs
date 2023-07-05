@@ -107,6 +107,8 @@ async fn main() -> Result<()> {
       .service(routes::channel::author_thumbnail_proxy)// -> /ggpht/{author_thumbnail_url:.*}
       .service(routes::playlist::playlist_endpoint)
       .service(routes::static_files)
+      .service(routes::homepage)
+      .service(routes::not_found)
       .wrap(
         if enable_cors {
           Cors::permissive()

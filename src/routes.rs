@@ -7,7 +7,7 @@ use std::fs;
 use serde::{Serialize, Deserialize};
 use serde_json::{to_string_pretty, to_string};
 use actix_web::web::{Query, Data, Path};
-use actix_web::{HttpResponse, Responder, get, HttpRequest};
+use actix_web::{HttpResponse, Responder, get, HttpRequest, routes};
 use actix_web::http::StatusCode;
 use crate::settings::AppSettings;
 
@@ -55,7 +55,6 @@ pub async fn server_stats(params: Query<StatsQueryParams>, app_settings: Data<Ap
     Some(pretty) => pretty == 1,
     None => false
   };
-  
   let stats = Stats {
     version: String::from("0.2.0"),
     software: Software {
@@ -110,4 +109,18 @@ pub async fn static_files(params: Path<String>) -> impl Responder {
     Ok(response) => response,
     Err(response) => response
   }
+}
+
+#[get("/{path:.*}")]
+pub async fn not_found(params: Path<String>) -> impl Responder {
+  let path = params.into_inner();
+  HttpResponse::build(StatusCode::from_u16(404).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"The requested path '/{}' was not found on this server.\" }}", path))
+}
+
+#[routes]
+#[get("/")]
+#[get("/watch")]
+#[get("/playlist")]
+pub async fn homepage() -> impl Responder {
+  HttpResponse::build(StatusCode::from_u16(200).unwrap()).content_type("text/html").body(actix_web::web::Bytes::from(include_bytes!("../static/home.html").into_iter().map(|u| u.to_owned()).collect::<Vec::<u8>>()))
 }

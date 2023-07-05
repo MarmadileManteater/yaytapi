@@ -1,0 +1,83 @@
+<html>
+  <head>
+    <title>yaytapi</title>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/static/icon.ico" />
+    <style>
+      body {
+        font-family: 'Consolas', monospace;
+      }
+      textarea { 
+        width: 100%;
+        min-height: 300px;
+        height: 80vh;
+        max-width: 100%;
+        min-width: 100%;
+        border: none;
+        outline: 0;
+        background-color: white;
+      }
+      @media(prefers-color-scheme: dark) {
+        body {
+          color: white;
+          background-color: black;
+        }
+        textarea {
+          color: white;
+          background-color: black;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div style="display: flex; gap: 15px">
+      <div><img src="/static/icon.png" width="200" /></div>
+      <div style="flex: 1">
+        <h1 id="title" style="margin-top: 0; margin-bottom: 10px" ></h1>
+        <textarea id="response" disabled></textarea>
+      </div>
+    </div>
+    <script>
+      ;(async () => {
+        const title = document.getElementById("title");
+        const response = document.getElementById("response");
+        try {
+          const path = window.location.href.split(window.location.hostname)[1];
+          let apiPath = '/api/v1/stats'
+          if (path.startsWith('/watch?v=')) {
+            apiPath = `/api/v1/videos/${path.split('/watch?v=')[1]}`
+            if (apiPath.indexOf("&") !== -1) {
+              apiPath = apiPath.split("&")[0]
+            }
+          } else if (path.startsWith('/playlist?list=')) {
+            apiPath = `/api/v1/playlists/${path.split('/playlist?list=')[1]}`
+            if (apiPath.indexOf("&") !== -1) {
+              apiPath = apiPath.split("&")[0]
+            }
+          }
+          apiPath = `${apiPath}?pretty=1`
+          const result = await fetch(apiPath)
+          const stats = await (result).text()
+          if (result.status !== 200) 
+            throw stats
+          response.value = stats
+          title.innerHTML = "🎉 yaytapi is running!"
+        } catch (error) {
+          if (typeof error === "string") {
+            try {
+              error = JSON.parse(error)
+            } catch {
+              // pass
+            }
+          }
+          
+          if (JSON.stringify(error) === "{}" && 'message' in error) {
+            error = { message: error.message }
+          }
+          response.value = JSON.stringify(error, null, 2)
+          title.innerHTML = "🤕 something is wrong!"
+        }
+      })()
+    </script>
+  </body>
+</html>
