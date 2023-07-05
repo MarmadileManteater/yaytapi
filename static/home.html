@@ -1,0 +1,109 @@
+<html>
+  <head>
+    <title>yaytapi</title>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/static/icon.ico" />
+    <style>
+      body {
+        font-family: 'Consolas', monospace;
+        height: 100vh;
+        overflow: hidden;
+      }
+      textarea { 
+        width: 100%;
+        min-height: 300px;
+        max-width: 100%;
+        min-width: 100%;
+        border: none;
+        outline: 0;
+        background-color: white;
+      }
+      .dark {
+        display: none;
+      }
+      @media(prefers-color-scheme: dark) {
+        body {
+          color: white;
+          background-color: black;
+        }
+        textarea {
+          color: white;
+          background-color: black;
+        }
+        .light {
+          display: none;
+        }
+        .dark {
+          display: initial;
+        }
+        a {
+          color: white;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div style="display: flex; gap: 15px; height: 100vh; overflow: hidden">
+      <div>
+        <a href="https://github.com/MarmadileManteater/yaytapi" target="_blank" rel="noreferrer" ><img src="/static/icon.png" width="200" /></a>
+        <div style="text-align: center" >
+          <a href="https://github.com/MarmadileManteater/yaytapi"  target="_blank" rel="noreferrer" >view source &raquo;</a>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction: column; flex: 1">
+        <div id="loading" style="display:flex; display: none" >
+          <img class="light" src="/static/loading.gif" />
+          <img class="dark" src="/static/loading-dark.gif" />
+        </div>
+        <h1 id="title" style="margin-top: 0; margin-bottom: 10px" ></h1>
+        <textarea style="flex: 1" id="response" disabled></textarea>
+      </div>
+    </div>
+    <script>
+      ;(async () => {
+        const title = document.getElementById("title")
+        const response = document.getElementById("response")
+        const loading = document.getElementById("loading")
+        loading.style.display = 'block'
+        try {
+          const path = window.location.href.split(window.location.hostname)[1]
+          let apiPath = '/api/v1/stats'
+          if (path.startsWith('/watch?v=')) {
+            apiPath = `/api/v1/videos/${path.split('/watch?v=')[1]}`
+            if (apiPath.indexOf("&") !== -1) {
+              apiPath = apiPath.split("&")[0]
+            }
+          } else if (path.startsWith('/playlist?list=')) {
+            apiPath = `/api/v1/playlists/${path.split('/playlist?list=')[1]}`
+            if (apiPath.indexOf("&") !== -1) {
+              apiPath = apiPath.split("&")[0]
+            }
+          }
+          apiPath = `${apiPath}?pretty=1`
+          const result = await Promise.race([fetch(apiPath), new Promise((resolve, reject) => setTimeout(() => { reject({ message: "⏳ Request to API endpoint timed out . . . " }) }, 10 * 1000))]);
+
+          const stats = await (result).text()
+          if (result.status !== 200) 
+            throw stats
+          response.value = stats
+          title.innerHTML = "🎉 yaytapi is running!"
+        } catch (error) {
+          if (typeof error === "string") {
+            try {
+              error = JSON.parse(error)
+            } catch {
+              // pass
+            }
+          }
+          
+          if (JSON.stringify(error) === "{}" && 'message' in error) {
+            error = { message: error.message }
+          }
+          response.value = JSON.stringify(error, null, 2)
+          title.innerHTML = "🤕 something is wrong!"
+        }
+        loading.style.display = 'none'
+      })()
+    </script>
+  </body>
+</html>

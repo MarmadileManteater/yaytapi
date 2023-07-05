@@ -79,6 +79,7 @@ impl DbWrapper {
       preference: DbType::MongoDb
     }
   }
+  // TODO ✏ add better error handling for timeouts per https://docs.rs/mongodb/latest/mongodb/#warning-about-timeouts--cancellation
   pub async fn seek_for_json(&self, collection_name: &str, key: &str) -> Option<Value> {
     match self.preference {
       DbType::UnQLite => {
@@ -141,7 +142,7 @@ pub async fn get_previous_data(collection: &str, key: &str, db: &DbWrapper, app_
           Some(timestamp) => {
             let current_timestamp = Utc::now().timestamp();
             let offset = current_timestamp - timestamp;
-            if offset as i32 > app_settings.cache_timeout {
+            if offset as u64 > app_settings.cache_timeout {
               db.delete(collection, key).await;
               None
             } else {

@@ -1,9 +1,10 @@
+<img src="https://github.com/MarmadileManteater/yaytapi/blob/playlists/static/icon.png" width="150" />
 
 # yet another yt api
 
 This server provides an [Invidious](https://github.com/iv-org/invidious)-like output in order to act as an API for applications which utilize the Invidious API such as [FreeTube](https://github.com/FreeTubeApp/FreeTube).
 
-This uses [yayti](https://github.com/MarmadileManteater/yayti) for extraction and formatting of data from YT.
+This uses [yayti](https://github.com/MarmadileManteater/yayti) for extraction and formatting of data from 📺YT.
 
 ## 🛠 Arguments
 - `--use-android-endpoint` 
@@ -25,27 +26,54 @@ This uses [yayti](https://github.com/MarmadileManteater/yayti) for extraction an
   - Allows proxying of videos through server
 - `--enable-cors`
   - Enables a permissive CORS policy
+- `--playlists-path=/path/to/playlists`
+  - Enables local playlists
+  - All `.json` files in the given directory will be loaded and turned into custom local playlists
+  - Expected formats:
+    ```json
+    [
+      "https://www.youtube.com/watch?v=Z8jKbeRbM6Q",
+      "https://youtu.be/tV5BnQNzrHc",
+      "https://redirect.invidious.io/watch?v=TjS6kOuSoq8"
+    ]
+    ```
+    OR
+    
+    ```json
+    {
+      "title": "Favourites",
+      "description": "a ⭐ playlist",
+      "videos": [
+        "https://youtu.be/PN-zHSvDc1g",
+        "https://youtu.be/MBNTxw-kLVE",
+        "https://youtu.be/_3rbzlh3JHc"
+      ]
+    }
+    ```
 - `--ip=127.0.0.1`
 - `--port=8080`
 
 
+
 ## 👩‍🏭 progress
-- [X] `/api/v1/stats`
-- [X] `/api/v1/videos` (missing certain aspects such as storyboards, but works for non-edge cases)
-- [ ] `/api/manifest/dash/id/{video_id}`
-- [ ] `/api/v1/comments`
-- [ ] `/api/v1/trending`
-- [ ] `/api/v1/channels`
-  - [ ] `/api/v1/channels/comments/{author_id}`
-  - [ ] `/api/v1/channels/search/{author_id}`
-- [ ] `/api/v1/search`
-- [ ] `/api/v1/playlists`
-- [ ] `/api/v1/mixes`
-- [ ] `/api/v1/captions` (unimplemented, but direct links to vtt are passed through)
-- [ ] `/api/v1/storyboards`
-- [X] `/vi/{video_id}/{file_name}.jpg`
-- [X] `/ggpht/{author_thumbnail}`
-- [X] `/latest_version`
-- [X] `/videoplayback`
-- [X] `/decipher_streams` (not an invidious endpoint, used for deciphering when enabled)
+- ✅ `/api/v1/stats`
+- 🏗 `/api/v1/videos`
+- ❌ `/api/manifest/dash/id/{video_id}`
+- ❌ `/api/v1/comments`
+- ❌ `/api/v1/trending`
+- ❌ `/api/v1/channels`
+  - ❌ `/api/v1/channels/comments/{author_id}`
+  - ❌ `/api/v1/channels/search/{author_id}`
+- ❌ `/api/v1/search`
+- 🏗 `/api/v1/playlists`
+  - ✅ working `page` parameter 
+  - ✅ local playlists can be loaded from `json` files on disk
+- ❌ `/api/v1/mixes`
+- ❌ `/api/v1/captions` (unimplemented, but direct links to vtt are passed through)
+- ❌ `/api/v1/storyboards`
+- ✅ `/vi/{video_id}/{file_name}.jpg`
+- ✅ `/ggpht/{author_thumbnail}`
+- ✅ `/latest_version`
+- ✅ `/videoplayback`
+- ✅ `/decipher_stream` (not an invidious endpoint, used for deciphering when enabled)
 
