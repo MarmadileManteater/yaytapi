@@ -13,7 +13,7 @@ jobs:
         runtime:
           - win-x64
           - linux-x64
-          - linux-arm
+#          - linux-arm
         include:
           - runtime: win-x64
             os: windows-latest
@@ -33,12 +33,11 @@ jobs:
         if: startsWith(matrix.runtime, 'linux-x64') || startsWith(matrix.runtime, 'win-x64')
         run: cargo build
       
-      - name: 📱 Build
+      - name: 📱 Build for arm
         if: startsWith(matrix.runtime, 'linux-arm')
         uses: pguyot/arm-runner-action@v2
         with:
           commands: |
-            curl https://sh.rustup.rs -sSf | sh -y
             cargo build
 
       - name: 🚚 Move all output files into the same dir
