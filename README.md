@@ -6,10 +6,6 @@ This server provides an [Invidious](https://github.com/iv-org/invidious)-like ou
 
 This uses [yayti](https://github.com/MarmadileManteater/yayti) for extraction and formatting of data from 📺YT.
 
-## ❗ Intention
-
-This is not meant to be a replacement for Invidious or the Invidious API. The primary intention of this project is to be a yt extractor that you can run on your local network and access with existing applications which already use Invidious _(such as FreeTube)_.
-
 ## 🛠 Arguments
 - `--use-android-endpoint` 
   - Enables use of the android client info when accessing the `/player` endpoint
