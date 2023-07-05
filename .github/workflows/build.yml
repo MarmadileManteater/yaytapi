@@ -70,12 +70,12 @@ jobs:
         if: startsWith(matrix.runtime, 'linux-x64')
         uses: actions/upload-artifact@v3
         with:
-          name: yaytapi-${{ matrix.runtime }}-${{ check_openssl }}
+          name: yaytapi-${{ matrix.runtime }}-${{ steps.check_openssl.outputs.OPENSSL_VERSION }}
           path: dist/
           
       - name: 📦 Publish artifact
         if: startsWith(matrix.runtime, 'linux-arm')
         uses: actions/upload-artifact@v3
         with:
-          name: yaytapi-${{ matrix.runtime }}-${{ check_openssl_arm }}
+          name: yaytapi-${{ matrix.runtime }}-${{ steps.check_openssl_arm.outputs.OPENSSL_VERSION }}
           path: dist/
