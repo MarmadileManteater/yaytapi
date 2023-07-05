@@ -38,6 +38,7 @@ jobs:
         uses: pguyot/arm-runner-action@v2
         with:
           commands: |
+            curl https://sh.rustup.rs -sSf | sh
             cargo build
 
       - name: 🚚 Move all output files into the same dir
