@@ -34,7 +34,7 @@ jobs:
         run: OPENSSL_STATIC=1 OPENSSL_LIB_DIR=/usr/lib64 OPENSSL_INCLUDE_DIR=/usr/include/openssl cargo build
       
       - name: Build for win-x64
-        if: startsWith(matrix.runtime, 'windows-x64')
+        if: startsWith(matrix.runtime, 'win-x64')
         run: cargo build
       
       - name: 📱 Build for arm
