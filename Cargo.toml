@@ -2,7 +2,10 @@
 name = "yaytapi"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
+[build-dependencies]
+winres = "0.1"
 [dependencies]
 actix-cors = "0.6.4"
 actix-web = "4.3.1"
@@ -13,11 +16,11 @@ log = "0.4.17"
 mongodb = "2.5.0"
 regex = "1.8.1"
 reqwest = "0.11.17"
-reqwest-streams = "0.2.5"
+reqwest-streams = "0.3.0"
 serde = { version = "1.0.147", features = ["derive"] }
 serde_json = { version = "1.0.87", features = ["preserve_order"] }
 substring = "1.4.5"
-tokio = "1.28.0"
+tokio = { version = "1.28.0" }
 tokio-stream = "0.1.14"
 unqlite = "1.5.0"
 yayti = { git = "https://github.com/MarmadileManteater/yayti", branch = "0.2.1", version = "0.2.1", features = ["decipher_streams", "parse_languages_to_published" ] }
