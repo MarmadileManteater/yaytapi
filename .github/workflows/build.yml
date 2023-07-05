@@ -12,15 +12,18 @@ jobs:
       matrix:
         runtime:
           - win-x64
-          - linux-x64
-          - linux-x64
+          - linux-x64-openssl3
+          - linux-x64-openssl1
 #          - linux-arm
         include:
           - runtime: win-x64
+            name: win-x64
             os: windows-latest
-          - runtime: linux-x64
+          - runtime: linux-x64-openssl3
+            name: linux-x64
             os: ubuntu-22.04
-          - runtime: linux-x64
+          - runtime: linux-x64-openssl1
+            name: linux-x64
             os: ubuntu-20.04
 #          - runtime: linux-arm
 #            os: ubuntu-latest
