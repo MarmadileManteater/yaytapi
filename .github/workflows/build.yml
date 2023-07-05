@@ -19,9 +19,9 @@ jobs:
           - runtime: win-x64
             os: windows-latest
           - runtime: linux-x64
-            os: ubuntu-latest
+            os: ubuntu-22.04
           - runtime: linux-x64
-            os: ubuntu-latest
+            os: ubuntu-20.04
 #          - runtime: linux-arm
 #            os: ubuntu-latest
 
