@@ -17,6 +17,9 @@
         outline: 0;
         background-color: white;
       }
+      .dark {
+        display: none;
+      }
       @media(prefers-color-scheme: dark) {
         body {
           color: white;
@@ -26,6 +29,12 @@
           color: white;
           background-color: black;
         }
+        .light {
+          display: none;
+        }
+        .dark {
+          display: initial;
+        }
       }
     </style>
   </head>
@@ -33,16 +42,22 @@
     <div style="display: flex; gap: 15px">
       <div><img src="/static/icon.png" width="200" /></div>
       <div style="flex: 1">
+        <div id="loading"style="display:flex; display: none" >
+          <img class="light" src="/static/loading.gif" />
+          <img class="dark" src="/static/loading-dark.gif" />
+        </div>
         <h1 id="title" style="margin-top: 0; margin-bottom: 10px" ></h1>
         <textarea id="response" disabled></textarea>
       </div>
     </div>
     <script>
       ;(async () => {
-        const title = document.getElementById("title");
-        const response = document.getElementById("response");
+        const title = document.getElementById("title")
+        const response = document.getElementById("response")
+        const loading = document.getElementById("loading")
+        loading.style.display = 'block'
         try {
-          const path = window.location.href.split(window.location.hostname)[1];
+          const path = window.location.href.split(window.location.hostname)[1]
           let apiPath = '/api/v1/stats'
           if (path.startsWith('/watch?v=')) {
             apiPath = `/api/v1/videos/${path.split('/watch?v=')[1]}`
@@ -77,6 +92,7 @@
           response.value = JSON.stringify(error, null, 2)
           title.innerHTML = "🤕 something is wrong!"
         }
+        loading.style.display = 'none'
       })()
     </script>
   </body>
