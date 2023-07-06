@@ -44,21 +44,6 @@ jobs:
         if: startsWith(matrix.runtime, 'linux-x64') || startsWith(matrix.runtime, 'win-x64')
         run: cargo build
       
-      - name: ⬇ Clone `yayti` 4 arm
-        if: startsWith(matrix.runtime, 'linux-arm')
-        run: |
-          git clone https://github.com/MarmadileManteater/yayti.git
-          cd yayti
-          git fetch --all
-          git pull --all
-          VERSION=$(grep -Eo 'branch = "([0-9.]*)"' ../Cargo.toml | sed 's/[^0-9.]//g')
-          echo $VERSION
-          git checkout $VERSION
-          cd ../
-          sed -i 's@git = "https://github.com/MarmadileManteater/yayti@path = "yayti@' ./Cargo.toml
-          sed -i "s@branch = \"$VERSION\", version = \"$VERSION\",@@" ./Cargo.toml
-          cat Cargo.toml
-      
       - name: 📱 Build for arm
         if: startsWith(matrix.runtime, 'linux-arm')
         uses: pguyot/arm-runner-action@v2
@@ -68,6 +53,7 @@ jobs:
           bind_mount_repository: true
           shell: /bin/bash
           commands: |
+            sudo apt-get install openssl -y
             curl https://sh.rustup.rs -sSf | sh -s -- -y
             source "$HOME/.cargo/env"
             rm -rf $HOME/.cargo/registry/
