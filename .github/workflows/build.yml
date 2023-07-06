@@ -42,7 +42,7 @@ jobs:
 
       - name: 🏗️ Build x64
         if: startsWith(matrix.runtime, 'linux-x64') || startsWith(matrix.runtime, 'win-x64')
-        run: cargo build -C prefer-dynamic 
+        run: cargo build
       
       - name: 📱 Build for arm
         if: startsWith(matrix.runtime, 'linux-arm')
