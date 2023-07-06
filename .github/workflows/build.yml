@@ -14,7 +14,7 @@ jobs:
           - win-x64
           - linux-x64-openssl3
           - linux-x64-openssl1
-          - linux-arm
+#          - linux-arm
         include:
           - runtime: win-x64
             name: win-x64
@@ -25,8 +25,8 @@ jobs:
           - runtime: linux-x64-openssl1
             name: linux-x64
             os: ubuntu-20.04
-          - runtime: linux-arm
-            os: ubuntu-latest
+#          - runtime: linux-arm
+#            os: ubuntu-latest
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -42,7 +42,7 @@ jobs:
 
       - name: 🏗️ Build x64
         if: startsWith(matrix.runtime, 'linux-x64') || startsWith(matrix.runtime, 'win-x64')
-        run: cargo build
+        run: cargo build -C prefer-dynamic 
       
       - name: 📱 Build for arm
         if: startsWith(matrix.runtime, 'linux-arm')
