@@ -44,6 +44,15 @@ jobs:
         if: startsWith(matrix.runtime, 'linux-x64') || startsWith(matrix.runtime, 'win-x64')
         run: cargo build
       
+      - name: ⬇ Clone `yayti` 4 arm
+        if: startsWith(matrix.runtime, 'linux-arm')
+        run: |
+          git clone https://github.com/MarmadileManteater/yayti.git
+          cd yayti
+          git pull --all
+          cd ../
+          sed -i 's@https://github.com/MarmadileManteater/yayti@yayti@' ./Cargo.toml
+      
       - name: 📱 Build for arm
         if: startsWith(matrix.runtime, 'linux-arm')
         uses: pguyot/arm-runner-action@v2
@@ -54,8 +63,7 @@ jobs:
           shell: /bin/bash
           commands: |
             curl https://sh.rustup.rs -sSf | sh -s -- -y
-            source "$HOME/.cargo/env"
-            echo "\n[net]  git-fetch-with-cli = true" >> "$HOME/.cargo/config"
+            source "$HOME/.cargo/env" 
             cargo build
 
       - name: 🚚 Move all output files into the same dir
