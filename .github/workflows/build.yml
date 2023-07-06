@@ -63,8 +63,8 @@ jobs:
         if: startsWith(matrix.runtime, 'linux-arm')
         uses: pguyot/arm-runner-action@v2
         with:
-          image: ./target/debug/yaytapi
-          image_additional_mb: 2048
+          base_image: raspios_lite_arm64:latest
+          image_additional_mb: 4096
           bind_mount_repository: true
           shell: /bin/bash
           commands: |
