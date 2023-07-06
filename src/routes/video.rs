@@ -40,7 +40,7 @@ async fn fetch_player_js_with_cache(db: &DbWrapper, app_settings: &AppSettings, 
   let need_new_player_js = match &player_js_id_option {
     Some(_) => true,
     None => {
-      let previous_js_id = get_previous_data("player", "player.js-id", &db, app_settings).await;
+      let previous_js_id = get_previous_data("player", "player_js-id", &db, app_settings).await;
       match previous_js_id {
         Some(previous_js_id_str) => {
           previous_js_id_str.as_str().unwrap_or("") != player_js_id
@@ -70,10 +70,10 @@ async fn fetch_player_js_with_cache(db: &DbWrapper, app_settings: &AppSettings, 
     match player_js_id_option {
       Some(_) => {},
       None => {
-        db.delete("player", "player.js-id").await;
-        db.insert_json("player", "player.js-id", &json!(player_js_id)).await;
-        db.delete("player", &format!("player.js-{}", player_js_id)).await;
-        db.insert_json("player", &format!("player.js-{}", player_js_id), &json!(player_js_response)).await;
+        db.delete("player", "player_js-id").await;
+        db.insert_json("player", "player_js-id", &json!(player_js_id)).await;
+        db.delete("player", &format!("player_js-{}", player_js_id)).await;
+        db.insert_json("player", &format!("player_js-{}", player_js_id), &json!(player_js_response)).await;
         db.delete("player", "signature_timestamp").await;
         db.insert_json("player", "signature_timestamp", &json!(signature_timestamp)).await;
       }
@@ -81,7 +81,7 @@ async fn fetch_player_js_with_cache(db: &DbWrapper, app_settings: &AppSettings, 
 
     Ok((player_js_response, signature_timestamp, player_js_id))
   } else {
-    let Some(player_js_response) = get_previous_data("player", &format!("player.js-{}", player_js_id), &db, app_settings).await else { todo!() };
+    let Some(player_js_response) = get_previous_data("player", &format!("player_js-{}", player_js_id), &db, app_settings).await else { todo!() };
     let Some(signature_timestamp) = get_previous_data("player", "signature_timestamp", &db, app_settings).await else { todo!() };
     Ok((String::from(player_js_response.as_str().unwrap()), signature_timestamp.as_i64().unwrap() as i32, player_js_id))
   }
