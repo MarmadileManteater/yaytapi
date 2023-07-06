@@ -53,6 +53,7 @@ jobs:
           bind_mount_repository: true
           commands: |
             curl https://sh.rustup.rs -sSf | sh -s -- -y
+            source "$HOME/.cargo/env"
             cargo build
 
       - name: 🚚 Move all output files into the same dir
