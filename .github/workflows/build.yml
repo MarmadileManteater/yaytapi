@@ -39,14 +39,6 @@ jobs:
         if: startsWith(matrix.runtime, 'linux-x64')
         run: echo "OPENSSL_VERSION=$(openssl version | grep -oP '\d+\.\d+\.\d+[a-z]*' | head -n 1)" >> $GITHUB_OUTPUT
         id: check_openssl
-        
-      - name: Check OpenSSL version in arm container
-        if: startsWith(matrix.runtime, 'linux-arm')
-        uses: pguyot/arm-runner-action@v2
-        with:
-          commands: |
-            echo "OPENSSL_VERSION=$(openssl version | grep -oP '\d+\.\d+\.\d+[a-z]*' | head -n 1)"
-        id: check_openssl_arm
 
       - name: 🏗️ Build x64
         if: startsWith(matrix.runtime, 'linux-x64') || startsWith(matrix.runtime, 'win-x64')
@@ -56,6 +48,8 @@ jobs:
         if: startsWith(matrix.runtime, 'linux-arm')
         uses: pguyot/arm-runner-action@v2
         with:
+          image: ./target/debug/yaytapi
+          image_additional_mb: 50
           commands: |
             curl https://sh.rustup.rs -sSf | sh -s -- -y
             cargo build
@@ -84,5 +78,5 @@ jobs:
         if: startsWith(matrix.runtime, 'linux-arm')
         uses: actions/upload-artifact@v3
         with:
-          name: yaytapi-${{ matrix.name }}-openssl${{ steps.check_openssl_arm.outputs.OPENSSL_VERSION }}
+          name: yaytapi-${{ matrix.name }}
           path: dist/
