@@ -45,7 +45,7 @@ jobs:
         uses: pguyot/arm-runner-action@v2
         with:
           commands: |
-            echo "OPENSSL_VERSION=$(openssl version | grep -oP '\d+\.\d+\.\d+[a-z]*' | head -n 1)" >> $GITHUB_OUTPUT
+            echo "OPENSSL_VERSION=$(openssl version | grep -oP '\d+\.\d+\.\d+[a-z]*' | head -n 1)"
         id: check_openssl_arm
 
       - name: 🏗️ Build x64
