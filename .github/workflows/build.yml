@@ -11,9 +11,9 @@ jobs:
     strategy:
       matrix:
         runtime:
-#          - win-x64
-#          - linux-x64-openssl3
-#          - linux-x64-openssl1
+          - win-x64
+          - linux-x64-openssl3
+          - linux-x64-openssl1
           - linux-arm
         include:
           - runtime: win-x64
