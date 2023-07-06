@@ -49,7 +49,9 @@ jobs:
         run: |
           git clone https://github.com/MarmadileManteater/yayti.git
           cd yayti
+          git fetch --all
           git pull --all
+          git checkout $(grep -Eo 'branch = \"([0-9.]*)\"' .\Cargo.toml | sed 's/[^0-9.]//g')
           cd ../
           sed -i 's@https://github.com/MarmadileManteater/yayti@yayti@' ./Cargo.toml
       
