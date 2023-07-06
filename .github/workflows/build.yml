@@ -50,6 +50,7 @@ jobs:
         with:
           image: ./target/debug/yaytapi
           image_additional_mb: 500
+          bind_mount_repository: true
           commands: |
             curl https://sh.rustup.rs -sSf | sh -s -- -y
             cargo build
