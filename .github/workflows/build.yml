@@ -53,7 +53,7 @@ jobs:
           bind_mount_repository: true
           shell: /bin/bash
           commands: |
-            sudo apt-get install libclang -y
+            sudo apt-get install clang -y
             sudo apt-get install libssl-dev -y
             curl https://sh.rustup.rs -sSf | sh -s -- -y
             source "$HOME/.cargo/env"
