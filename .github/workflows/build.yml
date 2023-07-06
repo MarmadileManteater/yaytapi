@@ -51,8 +51,7 @@ jobs:
           cd yayti
           git fetch --all
           git pull --all
-          grep -E 'branch = "' ./Cargo.toml
-          VERSION=$(grep -Eo 'branch = "([0-9.]*)"' ./Cargo.toml | sed 's/[^0-9.]//g')
+          VERSION=$(grep -Eo 'branch = "([0-9.]*)"' ../Cargo.toml | sed 's/[^0-9.]//g')
           echo $VERSION
           git checkout $VERSION
           cd ../
