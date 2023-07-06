@@ -49,7 +49,7 @@ jobs:
         uses: pguyot/arm-runner-action@v2
         with:
           image: ./target/debug/yaytapi
-          image_additional_mb: 50
+          image_additional_mb: 500
           commands: |
             curl https://sh.rustup.rs -sSf | sh -s -- -y
             cargo build
