@@ -56,7 +56,7 @@ jobs:
           git checkout $VERSION
           cd ../
           sed -i 's@git = "https://github.com/MarmadileManteater/yayti@path = "yayti@' ./Cargo.toml
-          sed -i 's@branch = "$VERSION", version = "$VERSION",@@' ./Cargo.toml
+          sed -i "s@branch = \"$VERSION\", version = \"$VERSION\",@@" ./Cargo.toml
           cat Cargo.toml
       
       - name: 📱 Build for arm
