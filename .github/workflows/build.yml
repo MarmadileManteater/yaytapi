@@ -55,7 +55,7 @@ jobs:
           commands: |
             curl https://sh.rustup.rs -sSf | sh -s -- -y
             source "$HOME/.cargo/env"
-            echo "[net]  git-fetch-with-cli = true" >> "$HOME/.cargo/config"
+            echo "\n[net]  git-fetch-with-cli = true" >> "$HOME/.cargo/config"
             cargo build
 
       - name: 🚚 Move all output files into the same dir
