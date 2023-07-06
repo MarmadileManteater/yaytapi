@@ -51,6 +51,7 @@ jobs:
           image: ./target/debug/yaytapi
           image_additional_mb: 2048
           bind_mount_repository: true
+          shell: /bin/bash
           commands: |
             curl https://sh.rustup.rs -sSf | sh -s -- -y
             source "$HOME/.cargo/env"
