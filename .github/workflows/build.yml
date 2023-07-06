@@ -53,8 +53,7 @@ jobs:
           bind_mount_repository: true
           shell: /bin/bash
           commands: |
-            echo $PKG_CONFIG_PATH
-            export PKG_CONFIG_PATH=/usr/lib/pkgconfig
+            sudo apt-get install libssl-dev -y
             curl https://sh.rustup.rs -sSf | sh -s -- -y
             source "$HOME/.cargo/env"
             rm -rf $HOME/.cargo/registry/
