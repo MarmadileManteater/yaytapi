@@ -14,7 +14,7 @@ jobs:
           - win-x64
           - linux-x64-openssl3
           - linux-x64-openssl1
-#          - linux-arm
+          - linux-arm
         include:
           - runtime: win-x64
             name: win-x64
@@ -25,8 +25,8 @@ jobs:
           - runtime: linux-x64-openssl1
             name: linux-x64
             os: ubuntu-20.04
-#          - runtime: linux-arm
-#            os: ubuntu-latest
+          - runtime: linux-arm
+            os: ubuntu-latest
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -53,7 +53,7 @@ jobs:
           bind_mount_repository: true
           shell: /bin/bash
           commands: |
-            sudo apt-get install clang -y
+            sudo apt-get install clang-format clang-tidy clang-tools clang libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb llvm-dev llvm-runtime llvm python-clang -y
             sudo apt-get install libssl-dev -y
             curl https://sh.rustup.rs -sSf | sh -s -- -y
             source "$HOME/.cargo/env"
