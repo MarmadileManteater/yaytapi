@@ -17,10 +17,11 @@ fn main() {
   .expect("failed to get commit")
   .stdout.as_slice()).replace("\n", ""));
   let mut git_info = File::create("./git-info.json").unwrap();
-  write!(git_info, "{}", format!("{{ \"commit\": \"{}\", \"branch\": \"{}\" }}", &commit, &branch_name));
+  write!(git_info, "{}", format!("{{ \"commit\": \"{}\", \"branch\": \"{}\" }}", &commit, &branch_name))
+    .expect("failed to store git info for build");
   if cfg!(target_os = "windows") {
     let mut res = winres::WindowsResource::new();
-    res.set_icon("static/icon.ico"); // Replace this with the filename of your .ico file.
+    res.set_icon("static/icon.ico");
     res.compile().unwrap();
   }
 }

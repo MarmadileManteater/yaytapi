@@ -58,7 +58,8 @@ jobs:
             curl https://sh.rustup.rs -sSf | sh -s -- -y
             source "$HOME/.cargo/env"
             rm -rf $HOME/.cargo/registry/
-            cargo build
+            # no unqlite 😢
+            cargo build --no-default-features
 
       - name: 🚚 Move all output files into the same dir
         run: |

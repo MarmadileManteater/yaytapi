@@ -22,10 +22,13 @@ serde_json = { version = "1.0.87", features = ["preserve_order"] }
 substring = "1.4.5"
 tokio = { version = "1.28.0" }
 tokio-stream = "0.1.14"
-unqlite = "1.5.0"
+unqlite = { version = "1.5.0", optional = true }
 yayti = { git = "https://github.com/MarmadileManteater/yayti", branch = "0.3.0", version = "0.3.0", features = ["decipher_streams", "parse_languages_to_published" ] }
 urlencoding = "2.1.2"
 mime_guess = "2.0.4"
 mimalloc = "0.1.37"
 
+[features]
+default = ["unqlite"]
+unqlite = ["dep:unqlite"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

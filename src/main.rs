@@ -12,10 +12,9 @@ use actix_web::middleware::Logger;
 use actix_cors::Cors;
 use env_logger::{Env, init_from_env};
 
-#[cfg(target_os="windows")]
+#[cfg(any(target_os = "windows", not(feature = "unqlite")))]
 use mimalloc::MiMalloc;
-
-#[cfg(target_os="windows")]
+#[cfg(any(target_os = "windows", not(feature = "unqlite")))]
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
