@@ -1,3 +1,4 @@
+#[cfg(feature = "unqlite")]
 use unqlite::{UnQLite, KV, Cursor, Direction::Exact};
 use serde_json::{json, from_str,to_string, Value};
 use serde::{Serialize, Deserialize};
@@ -14,7 +15,7 @@ pub trait JsonDb {
   fn insert_json(&self, key: &str, value: &Value);
   fn delete(&self, key: &str);
 }
-
+#[cfg(feature = "unqlite")]
 impl JsonDb for UnQLite {
   fn seek_for_json(&self, key: &str) -> Option<Value> {
     match self.seek(key, Exact) {
@@ -40,6 +41,7 @@ impl JsonDb for UnQLite {
     }
   }
   fn delete(&self, key: &str) {
+    #[cfg(feature = "unqlite")]
     match self.seek(key, Exact) {
       Some(cursor) => {
         cursor.delete();
@@ -59,12 +61,18 @@ pub struct JsonKVPair {
 
 pub struct DbWrapper {
   pub mongodb: Option<Database>,
+  #[cfg(feature = "unqlite")]
   pub unqlite: Option<UnQLite>,
+  pub unqlite: Option<String>,
   pub preference: DbType
 }
 
 // todo✏ figure out better solution for concurency
 impl DbWrapper {
+  pub fn none() -> DbWrapper {
+    DbWrapper { mongodb: None, unqlite: None, preference: DbType::None }
+  }
+  #[cfg(feature = "unqlite")]
   pub fn unqlite(unqlite: UnQLite) -> DbWrapper {
     DbWrapper {
       mongodb: None,
@@ -84,7 +92,9 @@ impl DbWrapper {
     match self.preference {
       DbType::UnQLite => {
         let Some(db) = &self.unqlite else { todo!() };
-        db.seek_for_json(&format!("{}-{}", collection_name, key))
+        #[cfg(feature = "unqlite")]
+        return db.seek_for_json(&format!("{}-{}", collection_name, key));
+        None
       },
       DbType::MongoDb => {
         let Some(db) = &self.mongodb else { todo!() };
@@ -96,13 +106,15 @@ impl DbWrapper {
           },
           Err(_) => None
         }
-      }
+      },
+      DbType::None => None
     }
   }
   pub async fn insert_json(&self, collection_name: &str, key: &str, value: &Value) {
     match self.preference {
       DbType::UnQLite => {
         let Some(db) = &self.unqlite else { todo!() };
+        #[cfg(feature = "unqlite")]
         db.insert_json(&format!("{}-{}", collection_name, key), value);
       },
       DbType::MongoDb => {
@@ -112,13 +124,15 @@ impl DbWrapper {
           Ok(_) => {},
           Err(error) => error!("❌ insert_json failed: {}", error)
         }
-      }
+      },
+      DbType::None => {}
     }
   }
   pub async fn delete(&self, collection_name: &str, key: &str) {
     match self.preference {
       DbType::UnQLite => {
         let Some(db) = &self.unqlite else { todo!() };
+        #[cfg(feature = "unqlite")]
         db.delete(&format!("{}-{}", collection_name, key))
       },
       DbType::MongoDb => {
@@ -128,7 +142,8 @@ impl DbWrapper {
           Ok(_) => {},
           Err(error) => error!("❌ delete failed: {}", error)
         }
-      }
+      },
+      DbType::None => {}
     }
   }
 }

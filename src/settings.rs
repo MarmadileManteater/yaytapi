@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use regex::Regex;
+#[cfg(feature = "unqlite")]
 use unqlite::UnQLite;
 use mongodb::{Client, options::ClientOptions};
 use std::str::FromStr;
@@ -8,7 +9,8 @@ use crate::helpers::DbWrapper;
 #[derive(Deserialize, Serialize, Clone)]
 pub enum DbType {
   UnQLite,
-  MongoDb
+  MongoDb,
+  None
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -84,7 +86,12 @@ impl AppSettings {
       Some(db_type_captures) => {
         (DbType::MongoDb, Some(String::from(db_type_captures.get(1).unwrap().as_str())))
       },
-      None => (DbType::UnQLite, None)
+      None => {
+        #[cfg(feature = "unqlite")]
+        return (DbType::UnQLite, None);
+        #[cfg(not(feature = "unqlite"))]
+        (DbType::None, None)
+      }
     };
     let Ok(public_url_re) = Regex::new(r#"--public-url=([^ ]+)"#) else { todo!() };
     let public_url = match public_url_re.captures(&args_string) {
@@ -98,7 +105,8 @@ impl AppSettings {
       Some(db_name_captures) => db_name_captures.get(1).unwrap().as_str(),
       None => match db_type {
         DbType::UnQLite => "yaytapi.db",
-        DbType::MongoDb => "local"
+        DbType::MongoDb => "local",
+        DbType::None => ""
       }
     };
     let Ok(num_of_workers_re) = Regex::new(r#"--workers=([0-9]+)"#) else { todo!() };
@@ -138,11 +146,20 @@ impl AppSettings {
     }
   }
   pub async fn get_json_db(&self) -> DbWrapper {
-    match self.db_type {
-      DbType::UnQLite => {
-        DbWrapper::unqlite(UnQLite::create(&self.db_name))
+    #[cfg(not(feature = "unqlite"))]
+    let is_unqlite_available = false;
+    #[cfg(feature = "unqlite")]
+    let is_unqlite_available = true;
+    match (&self.db_type, is_unqlite_available) {
+      (DbType::UnQLite, true) => {
+        #[cfg(feature = "unqlite")]
+        return DbWrapper::unqlite(UnQLite::create(&self.db_name));
+        DbWrapper::none()
       },
-      DbType::MongoDb => {
+      (DbType::None, _) => {
+        DbWrapper::none()
+      },
+      (_, _) => {
         // Parse a connection string into an options struct.
         let client_options = ClientOptions::parse(self.db_connection_string.as_ref().unwrap()).await.unwrap();
         // Get a handle to the deployment.
