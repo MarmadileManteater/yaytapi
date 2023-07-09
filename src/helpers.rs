@@ -63,6 +63,7 @@ pub struct DbWrapper {
   pub mongodb: Option<Database>,
   #[cfg(feature = "unqlite")]
   pub unqlite: Option<UnQLite>,
+  #[cfg(not(feature = "unqlite"))]
   pub unqlite: Option<String>,
   pub preference: DbType
 }

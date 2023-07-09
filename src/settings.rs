@@ -88,9 +88,10 @@ impl AppSettings {
       },
       None => {
         #[cfg(feature = "unqlite")]
-        return (DbType::UnQLite, None);
+        let result = (DbType::UnQLite, None);
         #[cfg(not(feature = "unqlite"))]
-        (DbType::None, None)
+        let result = (DbType::None, None);
+        result
       }
     };
     let Ok(public_url_re) = Regex::new(r#"--public-url=([^ ]+)"#) else { todo!() };
