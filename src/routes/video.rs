@@ -4,6 +4,7 @@ use serde::{Serialize, Deserialize};
 use chrono::prelude::Utc;
 use actix_web::web::{Path, Data, Query, Payload};
 use actix_web::{HttpResponse, Responder, get, route};
+use yayti::extractors::innertube::fetch_player;
 use yayti::extractors::{ciphers::get_player_js_id, ciphers::get_player_response, innertube::{fetch_next,fetch_player_with_sig_timestamp}};
 use yayti::parsers::{ClientContext, ciphers::{extract_sig_timestamp, decipher_streams}, ciphers, web::video::{fmt_inv_with_existing_map, fmt_inv, get_legacy_formats, get_adaptive_formats}};
 use yayti::helpers::{generate_yt_video_thumbnail_url,generate_yt_video_thumbnails_within_max_size};
@@ -143,121 +144,145 @@ pub async fn fetch_player_with_cache(id: &str, lang: &str, app_settings: &AppSet
       Ok(json)
     },
     None => {
-      let (player_js_response, signature_timestamp, player_js_id) = match fetch_player_js_with_cache(&db, &app_settings, None).await {
-        Ok(response) => response,
-        Err(error) => {
-          return Err(error);
-        }
-      };
-      let context = if app_settings.use_android_endpoint_for_streams {
-        ClientContext::default_android()
-      } else {
-        ClientContext::default_web()
-      };
-      match fetch_player_with_sig_timestamp(id, signature_timestamp, &context, Some(lang)).await {
-        Ok(player) => {
-          let mut json = match from_str::<Value>(&player) {
-            Ok(json) => json,
-            Err(_) => {
-              return Err(FetchPlayerError::FailedToSerializePlayer);
-            }
-          };
-          match json["playabilityStatus"]["status"].as_str() {
-            Some(status) => {
-              if status == "LOGIN_REQUIRED" {
-                return Err(FetchPlayerError::LoginRequired);
+      if app_settings.use_android_endpoint_for_streams {
+        let context = ClientContext::default_android();
+        match fetch_player(id, &context, Some(lang)).await {
+          Ok(player) => {
+            let json = match from_str::<Value>(&player) {
+              Ok(json) => json,
+              Err(_) => {
+                return Err(FetchPlayerError::FailedToSerializePlayer);
               }
-              if status == "ERROR" {
-                return Err(FetchPlayerError::ResponseUnplayable);
-              }
-            },
-            None => {}
-          };
-          let mut streams = Vec::<String>::new();
-          let empty_vec = Vec::new();
-          let formats = match json["streamingData"]["formats"].as_array() {
-            Some(formats) => formats,
-            None => &empty_vec
-          };
-          let adaptive_formats = match json["streamingData"]["adaptiveFormats"].as_array() {
-            Some(formats) => formats,
-            None => &empty_vec
-          };
-          let need_to_decipher = if formats.len() > 0 {
-            match formats[0]["url"].as_str() {
-              Some(_) => false,
-              None => true
-            }
-          } else if adaptive_formats.len() > 0 {
-            match adaptive_formats[0]["url"].as_str() {
-              Some(_) => false,
-              None => true
-            }
-          } else {
-            false
-          };
-          if need_to_decipher {
-            for k in 0..formats.len() {
-              streams.push(String::from(formats[k]["signatureCipher"].as_str().unwrap()));
-            }
-            for k in 0..adaptive_formats.len() {
-              streams.push(String::from(adaptive_formats[k]["signatureCipher"].as_str().unwrap()));
-            }
-            let deciphered_streams = if app_settings.decipher_on_video_endpoint {
-              match decipher_streams(streams, &player_js_response) {
-                Ok(streams) => streams,
-                Err(error) => {
-                  return Err(FetchPlayerError::FailedToDecipher(error));
+            };
+            match json["playabilityStatus"]["status"].as_str() {
+              Some(status) => {
+                if status == "LOGIN_REQUIRED" {
+                  return Err(FetchPlayerError::LoginRequired);
                 }
+                if status == "ERROR" {
+                  return Err(FetchPlayerError::ResponseUnplayable);
+                }
+              },
+              None => {}
+            };
+            Ok(json)
+          },
+          Err(error) => Err(FetchPlayerError::Reqwest(error))
+        }
+      } else {
+        let context = ClientContext::default_web();
+        let (player_js_response, signature_timestamp, player_js_id) = match fetch_player_js_with_cache(&db, &app_settings, None).await {
+          Ok(response) => response,
+          Err(error) => {
+            return Err(error);
+          }
+        };
+  
+        match fetch_player_with_sig_timestamp(id, signature_timestamp, &context, Some(lang)).await {
+          Ok(player) => {
+            let mut json = match from_str::<Value>(&player) {
+              Ok(json) => json,
+              Err(_) => {
+                return Err(FetchPlayerError::FailedToSerializePlayer);
+              }
+            };
+            match json["playabilityStatus"]["status"].as_str() {
+              Some(status) => {
+                if status == "LOGIN_REQUIRED" {
+                  return Err(FetchPlayerError::LoginRequired);
+                }
+                if status == "ERROR" {
+                  return Err(FetchPlayerError::ResponseUnplayable);
+                }
+              },
+              None => {}
+            };
+            let mut streams = Vec::<String>::new();
+            let empty_vec = Vec::new();
+            let formats = match json["streamingData"]["formats"].as_array() {
+              Some(formats) => formats,
+              None => &empty_vec
+            };
+            let adaptive_formats = match json["streamingData"]["adaptiveFormats"].as_array() {
+              Some(formats) => formats,
+              None => &empty_vec
+            };
+            let need_to_decipher = if formats.len() > 0 {
+              match formats[0]["url"].as_str() {
+                Some(_) => false,
+                None => true
+              }
+            } else if adaptive_formats.len() > 0 {
+              match adaptive_formats[0]["url"].as_str() {
+                Some(_) => false,
+                None => true
               }
             } else {
-              streams.into_iter().map(|stream| {
-                Some(format!("{}/decipher_stream?signature_cipher={}&player_js_id={}&video_id={}&local={}", hostname, encode(&stream), &player_js_id, &id, local && app_settings.enable_local_streaming))
-              }).collect::<Vec::<Option<String>>>()
+              false
             };
-            let formats_len = formats.len();
-            let adaptive_len = adaptive_formats.len();
-            let mut i = 0;
-            for k in 0..formats_len {
-              json["streamingData"]["formats"][k]["url"] = json!(deciphered_streams[i]);
-              i = i + 1;
-            }
-            for k in 0..adaptive_len {
-              json["streamingData"]["adaptiveFormats"][k]["url"] = json!(deciphered_streams[i]);
-              i = i + 1;
-            }
-          } else {
-            let formats_len = formats.len();
-            let adaptive_len = adaptive_formats.len();
-            let mut i = 0;
-            fn get_stream_url(url: &str, hostname: &str, is_local: bool) -> String{
-              let url_parts = url.split("googlevideo.com").collect::<Vec::<&str>>();
-              let google_hostname = format!("{}googlevideo.com", url_parts[0]).replace("https://", "");
-              let url_after = url_parts[1];
-              if is_local {
-                format!("{}{}&host={}", hostname, url_after, encode(&google_hostname))
-              } else {// iv always includes host param in response
-                format!("https://{}{}&host={}", google_hostname, url_after, encode(&google_hostname))
+            if need_to_decipher {
+              for k in 0..formats.len() {
+                streams.push(String::from(formats[k]["signatureCipher"].as_str().unwrap()));
+              }
+              for k in 0..adaptive_formats.len() {
+                streams.push(String::from(adaptive_formats[k]["signatureCipher"].as_str().unwrap()));
+              }
+              let deciphered_streams = if app_settings.decipher_on_video_endpoint {
+                match decipher_streams(streams, &player_js_response) {
+                  Ok(streams) => streams,
+                  Err(error) => {
+                    return Err(FetchPlayerError::FailedToDecipher(error));
+                  }
+                }
+              } else {
+                streams.into_iter().map(|stream| {
+                  Some(format!("{}/decipher_stream?signature_cipher={}&player_js_id={}&video_id={}&local={}", hostname, encode(&stream), &player_js_id, &id, local && app_settings.enable_local_streaming))
+                }).collect::<Vec::<Option<String>>>()
+              };
+              let formats_len = formats.len();
+              let adaptive_len = adaptive_formats.len();
+              let mut i = 0;
+              for k in 0..formats_len {
+                json["streamingData"]["formats"][k]["url"] = json!(deciphered_streams[i]);
+                i = i + 1;
+              }
+              for k in 0..adaptive_len {
+                json["streamingData"]["adaptiveFormats"][k]["url"] = json!(deciphered_streams[i]);
+                i = i + 1;
+              }
+            } else {
+              let formats_len = formats.len();
+              let adaptive_len = adaptive_formats.len();
+              let mut i = 0;
+              fn get_stream_url(url: &str, hostname: &str, is_local: bool) -> String{
+                let url_parts = url.split("googlevideo.com").collect::<Vec::<&str>>();
+                let google_hostname = format!("{}googlevideo.com", url_parts[0]).replace("https://", "");
+                let url_after = url_parts[1];
+                if is_local {
+                  format!("{}{}&host={}", hostname, url_after, encode(&google_hostname))
+                } else {// iv always includes host param in response
+                  format!("https://{}{}&host={}", google_hostname, url_after, encode(&google_hostname))
+                }
+              }
+              for k in 0..formats_len {
+                let url = json["streamingData"]["formats"][k]["url"].as_str().unwrap_or("");
+                json["streamingData"]["formats"][k]["url"] = json!(get_stream_url(url, &hostname, local && app_settings.enable_local_streaming));
+                i = i + 1;
+              }
+              for k in 0..adaptive_len {
+                let url = json["streamingData"]["adaptiveFormats"][k]["url"].as_str().unwrap_or("");
+                json["streamingData"]["adaptiveFormats"][k]["url"] = json!(get_stream_url(url, &hostname, local && app_settings.enable_local_streaming));
+                i = i + 1;
               }
             }
-            for k in 0..formats_len {
-              let url = json["streamingData"]["formats"][k]["url"].as_str().unwrap_or("");
-              json["streamingData"]["formats"][k]["url"] = json!(get_stream_url(url, &hostname, local && app_settings.enable_local_streaming));
-              i = i + 1;
+            json["timestamp"] = Utc::now().timestamp().into();
+            if app_settings.cache_requests {
+              db.insert_json("player", &format!("{}-{}-{}", id, lang, local), &json).await;
             }
-            for k in 0..adaptive_len {
-              let url = json["streamingData"]["adaptiveFormats"][k]["url"].as_str().unwrap_or("");
-              json["streamingData"]["adaptiveFormats"][k]["url"] = json!(get_stream_url(url, &hostname, local && app_settings.enable_local_streaming));
-              i = i + 1;
-            }
-          }
-          json["timestamp"] = Utc::now().timestamp().into();
-          if app_settings.cache_requests {
-            db.insert_json("player", &format!("{}-{}-{}", id, lang, local), &json).await;
-          }
-          Ok(json.clone())
-        },
-        Err(error) => Err(FetchPlayerError::Reqwest(error))
+            Ok(json.clone())
+          },
+          Err(error) => Err(FetchPlayerError::Reqwest(error))
+        }  
       }
     }
   }
