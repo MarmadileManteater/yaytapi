@@ -70,13 +70,16 @@
   </head>
   <body>
     <div style="display: flex; gap: 15px; height: 100vh; overflow: hidden">
-      <div>
+      <div style="width: 215px;">
         <a href="https://github.com/MarmadileManteater/yaytapi" target="_blank" rel="noreferrer" ><img src="/static/icon.png" width="200" /></a>
         <div style="text-align: center" >
           <a href="https://github.com/MarmadileManteater/yaytapi"  target="_blank" rel="noreferrer" >view source &raquo;</a>
         </div>
         <div id="archiveProgress" style="padding-top: 10px;"></div>
-
+        <div id="loadingArchiveThis" style="display:flex; display: none" >
+          <img class="light" src="/static/loading.gif" />
+          <img class="dark" src="/static/loading-dark.gif" />
+        </div>
         <button id="archiveThisButton" style="display: none;" onclick="archiveThis()">🗄Archive this!</button>
       </div>
       <div style="display:flex; flex-direction: column; flex: 1">
@@ -91,18 +94,23 @@
     <script>
       ;(async () => {
         let id = ''
+        const loadingArchiveThis = document.getElementById("loadingArchiveThis")
+        const archiveThisButton = document.getElementById("archiveThisButton")
         window.archiveThis = async function () {
+          loadingArchiveThis.style.display = 'block'
+          archiveThisButton.style.display = 'none'
           await fetch(`/api/v1/archive_video?video_id=${id}`)
           setTimeout(async () => {
             await window.check_archive_progress()
+            loadingArchiveThis.style.display = 'none'
           }, 1000)
         }
         const title = document.getElementById("title")
         const response = document.getElementById("response")
         const loading = document.getElementById("loading")
-        const archiveThisButton = document.getElementById("archiveThisButton")
         const archiveProgress = document.getElementById("archiveProgress")
         console.log(archiveProgress)
+
         loading.style.display = 'block'
         try {
           const path = window.location.href.split(window.location.hostname)[1]
