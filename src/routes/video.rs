@@ -392,6 +392,20 @@ pub async fn video_endpoint(req: HttpRequest, path: Path<String>, query: Query<V
           match fs::read(&path) {
             Ok(result) => {
               let string = format!("{}", String::from_utf8_lossy(&result[..]));
+              let mut json = from_str::<Value>(&string).unwrap();
+              match json["formatStreams"].as_array() {
+                Some(streams) => {
+                  for i in 0..streams.len() {
+                    let url = json["formatStreams"][i]["url"].as_str().unwrap_or("");
+                    let domain = url.split("/retrieve").nth(0).unwrap();
+                    json["formatStreams"][i]["url"] = json!(url.replace(domain, &app_settings.pub_url.clone().unwrap_or(format!("{}:{}", app_settings.ip_address, &app_settings.port))));
+
+                  }
+                },
+                None => {
+
+                }
+              }
               return HttpResponse::build(StatusCode::from_u16(200).unwrap()).content_type("application/json").body(string);
             },
             Err(_) => {
