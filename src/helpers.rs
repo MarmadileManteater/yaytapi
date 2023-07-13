@@ -147,6 +147,15 @@ impl DbWrapper {
       DbType::None => {}
     }
   }
+  pub async fn insert_or_update(&self, collection_name: &str, key: &str, value: &Value)  {
+    match self.seek_for_json(collection_name, key).await {
+      Some(_) => {
+        self.delete(collection_name, key).await;
+      },
+      None => {}
+    };
+    self.insert_json(collection_name, key, value).await;
+  }
 }
 
 

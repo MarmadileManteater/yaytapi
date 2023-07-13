@@ -4,6 +4,7 @@ use serde::{Serialize, Deserialize};
 use chrono::prelude::Utc;
 use actix_web::web::{Path, Data, Query, Payload};
 use actix_web::{HttpResponse, Responder, get, route};
+use actix_files::NamedFile;
 use yayti::extractors::innertube::fetch_player;
 use yayti::extractors::{ciphers::get_player_js_id, ciphers::get_player_response, innertube::{fetch_next,fetch_player_with_sig_timestamp}};
 use yayti::parsers::{ClientContext, ciphers::{extract_sig_timestamp, decipher_streams}, ciphers, web::video::{fmt_inv_with_existing_map, fmt_inv, get_legacy_formats, get_adaptive_formats}};
@@ -19,6 +20,9 @@ use urlencoding::encode;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use futures_util::StreamExt;
+use std::fs;
+use std::fs::File;
+use std::io::{Write, Read};
 use crate::settings::AppSettings;
 use crate::helpers::get_previous_data;
 use crate::helpers::DbWrapper;
@@ -379,6 +383,29 @@ pub async fn video_endpoint(req: HttpRequest, path: Path<String>, query: Query<V
     },
     None => DEFAULT_FIELDS.into_iter().map(|string| String::from(string)).collect::<Vec::<String>>()
   };
+  match &app_settings.archive_path {
+    Some(archive_path) => {
+      // check if the video has already been archived
+      let path = format!("{}/{}/{}.data.json", archive_path, video_id, lang);
+      match fs::metadata(&path) {
+        Ok(_) => {
+          match fs::read(&path) {
+            Ok(result) => {
+              let string = format!("{}", String::from_utf8_lossy(&result[..]));
+              return HttpResponse::build(StatusCode::from_u16(200).unwrap()).content_type("application/json").body(string);
+            },
+            Err(_) => {
+
+            }
+          }
+        },
+        Err(_) => {
+
+        }
+      }
+    },
+    None => {}
+  }
   let player_res = match fetch_player_with_cache(&video_id, &lang, &app_settings, local, Some(&uri)).await {
     Ok(player_res) => player_res,
     Err(fetch_player_error) => {
@@ -612,7 +639,8 @@ pub async fn videoplayback(req: HttpRequest, mut payload: Payload, params: Query
         .send()
         .await
         .unwrap();
-  
+
+    
     let client_resp = HttpResponse::build(res.status());
     res.headers().add_headers_to_builder(client_resp).streaming(res.bytes_stream())
   } else {
@@ -681,4 +709,263 @@ pub async fn decipher_stream(params: Query<DecipherStreamQueryParams>, app_setti
     HttpResponse::build(StatusCode::from_u16(403).unwrap()).content_type("application/json").body("{ \"type\": \"error\", \"message\": \"Deciphering streams has been disabled.\" }")
   }
 }
- 
+
+#[derive(Deserialize)]
+pub struct ArchiveVideoQueryParams {
+  video_id: Option<String>,
+  hl: Option<String>
+}
+
+// TODO ✏ make this an authenticated endpoint by default
+#[get("/api/v1/archive_video")]
+pub async fn archive_video(params: Query<ArchiveVideoQueryParams>, app_settings: Data<AppSettings>) -> impl Responder {
+  let lang = params.hl.clone().unwrap_or(String::from("en"));// TODO ✏
+  let Some(video_id) = params.video_id.as_ref().map(String::from) else { return HttpResponse::build(StatusCode::from_u16(400).unwrap()).content_type("application/json").body("{ \"type\": \"error\", \"message\": \"Missing required query param 'video_id'\" }") };
+  match &app_settings.archive_path {
+    Some(archive_path) => {
+      let player_value = match fetch_player_with_cache(&video_id, &lang, &app_settings, false, app_settings.pub_url.as_deref()).await {
+        Ok(result) => result,
+        Err(error) => {
+          return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Failed to fetch `/player` endpoint\", \"inner_message\": \"{}\" }}", error))
+        }
+      };
+      let mut json = fmt_inv(&player_value, &lang);
+      let Ok(next_value) = fetch_next_with_cache(&video_id, &lang, &app_settings).await else { return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Failed to fetch `/next` endpoint\" }}")) };
+      json = fmt_inv_with_existing_map(&next_value, &lang, json);
+      json.insert(String::from("innertube"), json!(common_macros::hash_map!{
+        "player" => player_value,
+        "next" => next_value
+      }));
+      // 🔍 figure out what thumbnail sizes exist
+      let client = Client::new();
+      let has_maxres = match client.head(format!("https://i.ytimg.com/vi/{}/maxresdefault.jpg", video_id)).send().await {
+        Ok(res) => {
+          res.status() != 404
+        },
+        Err(_) => false
+      };
+      let has_sd = has_maxres || match client.head(format!("https://i.ytimg.com/vi/{}/sddefault.jpg", video_id)).send().await {
+        Ok(res) => {
+          res.status() != 404
+        },
+        Err(_) => false
+      };
+      let max_size = if has_maxres {
+        1920
+      } else {
+        if has_sd {
+          640
+        } else {
+          480
+        }
+      };
+      json.insert(String::from("captions"), json!([]));
+      if !json.contains_key("videoThumbnails") {
+        json.insert(String::from("videoThumbnails"), json!(generate_yt_video_thumbnails_within_max_size(&video_id, max_size)));
+      }
+      let dir_name = format!("{}/{}", archive_path, video_id);
+      match fs::create_dir(&dir_name) {
+        Ok(_) => {},
+        Err(_) => {
+          return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Error creating directory: {}\" }}", dir_name));
+        }
+      };
+      
+      match json["formatStreams"].as_array() {
+        Some(format_streams) => {
+          let stream_urls: Vec::<(String, String, String)> = format_streams.into_iter().filter_map(|stream| {
+            match (stream["itag"].as_str().map(String::from), stream["url"].as_str().map(String::from), stream["container"].as_str().map(String::from)) {
+              (Some(itag), Some(url), Some(container)) => {
+                Some((itag, url, container))
+              },
+              _ => {
+                None
+              }
+            }
+          }).collect::<Vec::<(String, String, String)>>();
+          let settings = app_settings.clone();
+          let id = format!("{}", video_id);
+          let mut json_clone = json.clone();
+          let lang_clone = String::from(&lang);
+          tokio::spawn(async move {
+            let client = Client::new();
+            for (itag, stream_url, container) in stream_urls {
+              let stream_response = client.get(stream_url).send().await.expect("stream failed");
+              let id_clone = id.clone();
+              let app_settings = settings.clone();
+              let dir_name_clone = dir_name.clone();
+              tokio::spawn(async move {
+                let json_db = app_settings.get_json_db().await;
+                let Some(clen) = stream_response.content_length() else { todo!() };
+                let mut stream = stream_response.bytes_stream();
+                let mut file = File::create(format!("{}/{}.{}", dir_name_clone, itag, container)).unwrap();
+                let mut written_bytes_count = 0;
+                loop {
+                  json_db.insert_or_update("archive-videos", &format!("{}-{}-progress", id_clone, itag), &json!(common_macros::hash_map!{
+                    "progress" => json!(written_bytes_count as f64 / clen as f64),
+                    "finished" => json!(false),
+                    "working" => json!(true)
+                  })).await;
+                  let chunk = stream.next().await;
+                  match chunk {
+                    Some(bytes) => {
+                      match bytes {
+                        Ok(b) => {
+                          file.write(&b[..]).unwrap();
+                          written_bytes_count += b[..].len() as u64;
+                          json_db.insert_or_update("archive-videos", &format!("{}-{}-progress", id_clone, itag), &json!(common_macros::hash_map!{
+                            "progress" => json!(written_bytes_count as f64 / clen as f64),
+                            "finished" => json!(false),
+                            "working" => json!(true)
+                          })).await;
+                        },
+                        Err(error) => {
+                          log::error!("{}", error);
+                          json_db.insert_or_update("archive-videos", &format!("{}-{}-progress", id_clone, itag), &json!(common_macros::hash_map!{
+                            "progress" => json!(written_bytes_count as f64 / clen as f64),
+                            "finished" => json!(true),
+                            "working" => json!(false),
+                            "error" => json!(format!("{}", error))
+                          })).await;
+                          break;
+                        }
+                      }
+                    },
+                    None => {
+                      break;
+                    }
+                  }
+                }
+                json_db.insert_or_update("archive-videos", &format!("{}-{}-progress", id_clone, itag), &json!(common_macros::hash_map!{
+                  "progress" => json!(1),
+                  "finished" => json!(true),
+                  "working" => json!(false)
+                })).await;
+              });
+            }
+            // since this is an async closure way later in time, I need to get this variable again
+            match json_clone["formatStreams"].as_array() {
+              Some(streams) => {
+                for i in 0..streams.len() {
+                  json_clone["formatStreams"][i]["url"] = json!(format!("{}/retrieve_archived_stream?video_id={}&itag={}", settings.pub_url.clone().unwrap_or(format!("http://{}:{}", settings.ip_address, settings.port)), id, json_clone["formatStreams"][i]["itag"].as_str().unwrap_or("")));
+                }
+                let mut file = match File::create(format!("{}/{}.data.json", dir_name, lang_clone)) {
+                  Ok(file) => file,
+                  Err(_) => { todo!() }
+                };
+                write!(file, "{}", match to_string_pretty(&json_clone) {
+                  Ok(string) => string,
+                  Err(_) => {
+                    todo!();
+                  }
+                });
+              },
+              None => {
+                
+              }
+            }
+          });
+        },
+        None => {}
+      };
+      let dir_name = format!("{}/{}", archive_path, &video_id);
+      let mut file = match File::create(format!("{}/{}.data.json", dir_name, lang)) {
+        Ok(file) => file,
+        Err(_) => {
+          return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Error creating file: {}\" }}", format!("{}/{}.data.json", dir_name, lang)))
+        }
+      };
+      write!(file, "{}", match to_string_pretty(&json) {
+        Ok(string) => string,
+        Err(_) => {
+          return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"error\", \"message\": \"Error writing file: {}\" }}", format!("{}/data.json", dir_name)))
+        }
+      });
+      HttpResponse::build(StatusCode::from_u16(200).unwrap()).content_type("application/json").body(format!("{{ \"type\": \"log\", \"message\": \"Archive video succesfully started!\" }}"))
+    },
+    None => {
+      HttpResponse::build(StatusCode::from_u16(403).unwrap()).content_type("application/json").body("{ \"type\": \"error\", \"message\": \"This endpoint is disabled because no archive path was set in configuration.\" }")
+    }
+  }
+}
+
+#[derive(Deserialize)]
+pub struct RetrieveStreamQueryParams {
+  video_id: Option<String>,
+  itag: Option<String>
+}
+
+#[get("/retrieve_archived_stream")]
+pub async fn retrieve_archived_stream(req: HttpRequest, params: Query<RetrieveStreamQueryParams>, app_settings: Data<AppSettings>) -> impl Responder {
+  let Some(video_id) = params.video_id.as_ref().map(String::from) else { return HttpResponse::build(StatusCode::from_u16(400).unwrap()).content_type("application/json").body("{ \"type\": \"error\", \"message\": \"Missing required query param 'video_id'\" }") };
+  let Some(itag) = params.itag.as_ref().map(String::from) else { return HttpResponse::build(StatusCode::from_u16(400).unwrap()).content_type("application/json").body("{ \"type\": \"error\", \"message\": \"Missing required query param 'itag'\" }") };
+   match &app_settings.archive_path {
+    Some(archive_path) => {
+      let dir = match fs::read_dir(format!("{}/{}", archive_path, video_id)) {
+        Ok(dir) => dir,
+        Err(_error) => {
+          return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body("{ \"type\": \"error\", \"message\": \"Error reading archive dir\" }")
+        }
+      };
+      let dir_entries = dir.filter_map(|dir_entry| {
+        match dir_entry {
+          Ok(dir_entry) => {
+            if dir_entry.file_name().to_str().unwrap_or("").starts_with(&itag) {
+              Some(dir_entry)
+            } else {
+              None
+            }
+          },
+          Err(_error) => {
+            None
+          }
+        }
+      }).collect::<Vec::<_>>();
+      if dir_entries.len() > 0 {
+        let file_path = format!("{}/{}/{}", archive_path, video_id, dir_entries[0].file_name().to_str().unwrap_or(""));
+        let file = NamedFile::open(file_path).unwrap();
+        file.respond_to(&req)
+        /*let mut file = File::open(file_path).unwrap();
+        let mut bytes = Vec::with_capacity(200);
+        let (tx, rx) = mpsc::unbounded_channel();
+  
+        actix_web::rt::spawn(async move {
+          loop {
+            if file.read(&mut bytes[..]).unwrap() == 0 {
+              tx.send(bytes).unwrap();
+              break
+            }
+          }
+        });
+        return HttpResponse::Ok().streaming(rx);*/
+      } else {
+        return HttpResponse::build(StatusCode::from_u16(404).unwrap()).content_type("application/json").body("{ \"type\": \"error\", \"message\": \"Could not find stream\" }")
+      }
+    },
+    None => {
+      return HttpResponse::build(StatusCode::from_u16(403).unwrap()).content_type("application/json").body("{ \"type\": \"error\", \"message\": \"This endpoint is disabled because no archive path was set in configuration.\" }")
+    }
+  }
+}
+
+#[get("/api/v1/check_archive_progress")]
+pub async fn check_archive_progress(params: Query<RetrieveStreamQueryParams>, app_settings: Data<AppSettings>) -> impl Responder {
+  let Some(video_id) = params.video_id.as_ref().map(String::from) else { return HttpResponse::build(StatusCode::from_u16(400).unwrap()).content_type("application/json").body("{ \"type\": \"error\", \"message\": \"Missing required query param 'video_id'\" }") };
+  let Some(itag) = params.itag.as_ref().map(String::from) else { return HttpResponse::build(StatusCode::from_u16(400).unwrap()).content_type("application/json").body("{ \"type\": \"error\", \"message\": \"Missing required query param 'itag'\" }") };
+  let db = app_settings.get_json_db().await;
+  match db.seek_for_json("archive-videos", &format!("{}-{}-progress", video_id, itag)).await {
+    Some(progress) => {
+      match to_string_pretty(&progress) {
+        Ok(string) => {
+          return HttpResponse::build(StatusCode::from_u16(200).unwrap()).content_type("application/json").body(string);
+        },
+        Err(error) => {
+          return HttpResponse::build(StatusCode::from_u16(500).unwrap()).content_type("application/json").body(format!("{}", error));
+        }
+      }
+      
+    },
+    None => {}
+  };
+  HttpResponse::build(StatusCode::from_u16(404).unwrap()).content_type("application/json").body("{ \"type\": \"error\", \"message\": \"This video + itag don't have any progress stored for it in the db.\" }")
+}

@@ -21,6 +21,32 @@
       .dark {
         display: none;
       }
+      button#archiveThisButton {
+        display: inline-block;
+        width: 100%;
+        padding: 10px;
+        margin-top: 20px;
+        font-family: 'Segoe UI Emoji';
+        background-color: brown;
+        color: white;
+        border: none;
+        cursor: pointer;
+      }
+      progress {
+        display: block;
+        width: 100%;
+        outline: none;
+        border: none;
+        background-color: #313131;
+        margin-top: 10px;
+        margin-bottom: 10px;
+      }
+      progress::-moz-progress-bar, progress::-webkit-progress-value {
+        background: brown;
+        background-image: linear-gradient( -45deg, rgba(255, 255, 255, .2) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, .2) 50%, rgba(255, 255, 255, .2) 75%, transparent 75%, transparent );
+        transition: width 0.25s ease;
+      }
+
       @media(prefers-color-scheme: dark) {
         body {
           color: white;
@@ -49,6 +75,9 @@
         <div style="text-align: center" >
           <a href="https://github.com/MarmadileManteater/yaytapi"  target="_blank" rel="noreferrer" >view source &raquo;</a>
         </div>
+        <div id="archiveProgress" style="padding-top: 10px;"></div>
+
+        <button id="archiveThisButton" style="display: none;" onclick="archiveThis()">🗄Archive this!</button>
       </div>
       <div style="display:flex; flex-direction: column; flex: 1">
         <div id="loading" style="display:flex; display: none" >
@@ -61,20 +90,35 @@
     </div>
     <script>
       ;(async () => {
+        let id = ''
+        window.archiveThis = async function () {
+          await fetch(`/api/v1/archive_video?video_id=${id}`)
+          setTimeout(async () => {
+            await window.check_archive_progress()
+          }, 1000)
+        }
         const title = document.getElementById("title")
         const response = document.getElementById("response")
         const loading = document.getElementById("loading")
+        const archiveThisButton = document.getElementById("archiveThisButton")
+        const archiveProgress = document.getElementById("archiveProgress")
+        console.log(archiveProgress)
         loading.style.display = 'block'
         try {
           const path = window.location.href.split(window.location.hostname)[1]
+          let reqType = 'stats'
           let apiPath = '/api/v1/stats'
           if (path.startsWith('/watch?v=')) {
-            apiPath = `/api/v1/videos/${path.split('/watch?v=')[1]}`
+            reqType = 'video'
+            id = path.split('/watch?v=')[1]
+            apiPath = `/api/v1/videos/${id}`
             if (apiPath.indexOf("&") !== -1) {
               apiPath = apiPath.split("&")[0]
             }
           } else if (path.startsWith('/playlist?list=')) {
-            apiPath = `/api/v1/playlists/${path.split('/playlist?list=')[1]}`
+            reqType = 'playlist'
+            id = path.split('/playlist?list=')[1]
+            apiPath = `/api/v1/playlists/${id}`
             if (apiPath.indexOf("&") !== -1) {
               apiPath = apiPath.split("&")[0]
             }
@@ -82,10 +126,56 @@
           apiPath = `${apiPath}?pretty=1`
           const result = await Promise.race([fetch(apiPath), new Promise((resolve, reject) => setTimeout(() => { reject({ message: "⏳ Request to API endpoint timed out . . . " }) }, 10 * 1000))]);
 
-          const stats = await (result).text()
+          const statsText = await (result).text()
+          if (reqType === "video") {
+            let stats = JSON.parse(statsText);
+            window.check_archive_progress = async function (check_for_archive_button = true) {
+              let archive_progress = await Promise.all(stats.formatStreams.map(({itag}) => itag).map(async (itag) => {
+                let response = await fetch(`/api/v1/check_archive_progress?video_id=${stats.videoId}&itag=${itag}`)
+                if (response.status == 200) {
+                  // there is progress to show
+                  return [itag, await response.text()]
+                } else {
+                  return null
+                }
+              }));
+              const filtered = archive_progress.filter((entry) => entry !== null)
+              if (filtered.length === 0) {
+                // no archive exists yet
+                if (check_for_archive_button)
+                  archiveThisButton.style.display = 'inline-block'
+              } else if (filtered.filter((entry) => entry.progress !== 1).length > 0) {
+                archiveThisButton.style.display = 'none'
+                const progresses = []
+                filtered.forEach(([itag, progressItem]) => {
+                  const progress = JSON.parse(progressItem).progress
+                  progresses.push(progress)
+                  let progressElement = archiveProgress.querySelector(`#progress-${itag}`)
+                  let progressLabel = archiveProgress.querySelector(`[data-for="progress-${itag}"]`)
+                  if (progressElement === null) {
+                    progressElement = document.createElement("progress")
+                    progressElement.setAttribute("id", `progress-${itag}`)
+                    progressElement.setAttribute("max", "100")
+                    progressLabel = document.createElement("label")
+                    progressLabel.setAttribute("data-for", `progress-${itag}`)
+                    archiveProgress.appendChild(progressLabel)
+                    archiveProgress.appendChild(progressElement)
+                  }
+                  progressElement.setAttribute("value", `${Math.floor(progress * 100)}`)
+                  progressLabel.innerHTML = `itag: ${itag}, progress: ${Math.floor(progress * 100)}%`
+                })
+                if (progresses.filter(i => i !== 1).length !== 0) {
+                  setTimeout(async () => {
+                    await window.check_archive_progress(false)
+                  }, 2000)
+                }
+              }
+            }
+            await window.check_archive_progress()
+          }
           if (result.status !== 200) 
             throw stats
-          response.value = stats
+          response.value = statsText
           title.innerHTML = "🎉 yaytapi is running!"
         } catch (error) {
           if (typeof error === "string") {

@@ -65,7 +65,10 @@ pub struct AppSettings {
   //  "khBwYuNGU6U"
   // ]
   // can be set with `--playlists-path=/path/to/playlists/`
-  pub playlists_path: Option<String>
+  pub playlists_path: Option<String>,
+  // a path to where to store videos for archival purposes
+  // can be set with `--archive-path=/path/to/archive/`
+  pub archive_path: Option<String>
 }
 
 impl AppSettings {
@@ -94,14 +97,14 @@ impl AppSettings {
         result
       }
     };
-    let Ok(public_url_re) = Regex::new(r#"--public-url=([^ ]+)"#) else { todo!() };
+    let public_url_re = Regex::new(r#"--public-url=([^ ]+)"#).unwrap();
     let public_url = match public_url_re.captures(&args_string) {
       Some(public_url_re_captures) => {
         Some(String::from(public_url_re_captures.get(1).unwrap().as_str()))
       },
       None => None
     };
-    let Ok(db_name_re) = Regex::new(r#"--db-name=([^ ]+)"#) else { todo!() };
+    let db_name_re = Regex::new(r#"--db-name=([^ ]+)"#).unwrap();
     let db_name = match db_name_re.captures(&args_string) {
       Some(db_name_captures) => db_name_captures.get(1).unwrap().as_str(),
       None => match db_type {
@@ -110,15 +113,22 @@ impl AppSettings {
         DbType::None => ""
       }
     };
-    let Ok(num_of_workers_re) = Regex::new(r#"--workers=([0-9]+)"#) else { todo!() };
+    let num_of_workers_re = Regex::new(r#"--workers=([0-9]+)"#).unwrap();
     let num_of_workers = match num_of_workers_re.captures(&args_string) {
       Some(db_name_captures) => i32::from_str(db_name_captures.get(1).unwrap().as_str()).unwrap_or(1) as usize,
       None => 1
     };
-    let Ok(playlists_dir_re) = Regex::new(r#"--playlists-path=([^ ]+)"#) else { todo!() };
+    let playlists_dir_re = Regex::new(r#"--playlists-path=([^ ]+)"#).unwrap();
     let playlist_dir = match playlists_dir_re.captures(&args_string) {
       Some(playlist_dir_captures) => {
         Some(String::from(playlist_dir_captures.get(1).unwrap().as_str()))
+      },
+      None => None
+    };
+    let archive_dir_re = Regex::new(r#"--archive-path=([^ ]+)"#).unwrap();
+    let archive_dir = match archive_dir_re.captures(&args_string) {
+      Some(archive_dir_captures) => {
+        Some(String::from(archive_dir_captures.get(1).unwrap().as_str()))
       },
       None => None
     };
@@ -143,7 +153,8 @@ impl AppSettings {
       db_name: String::from(db_name),
       db_type: db_type,
       num_of_workers: num_of_workers,
-      playlists_path: playlist_dir
+      playlists_path: playlist_dir,
+      archive_path: archive_dir
     }
   }
   pub async fn get_json_db(&self) -> DbWrapper {

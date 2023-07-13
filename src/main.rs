@@ -104,6 +104,9 @@ async fn main() -> Result<()> {
       .service(routes::video::latest_version)// -> /latest_version
       .service(routes::video::videoplayback)// -> /videoplayback
       .service(routes::video::decipher_stream)// -> /decipher_stream
+      .service(routes::video::archive_video)// -> /api/v1/archive_video
+      .service(routes::video::retrieve_archived_stream)// -> /retrieve_archived_stream
+      .service(routes::video::check_archive_progress)// -> /api/v1/check_archive_progress
       .service(routes::video::video_endpoint)// -> /api/v1/videos/{video_id}
       .service(routes::video::video_thumbnail_proxy)// -> /vi/{video_id}/{file_name}.jpg
       .service(routes::channel::author_thumbnail_proxy)// -> /ggpht/{author_thumbnail_url:.*}
